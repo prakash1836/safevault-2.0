@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { X, Lock, CheckCircle2 } from 'lucide-react-native';
+import { Lock, CheckCircle2 } from 'lucide-react-native';
 import { Stepper } from '../../src/components/Stepper';
+import { UploadHeader } from '../../src/components/UploadHeader';
 import { useUpload } from '../../src/contexts/UploadContext';
 import { useVault } from '../../src/contexts/VaultContext';
 import { PrimaryButton, Card } from '../../src/components/UI';
@@ -44,11 +45,7 @@ export default function ReviewStep() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.close} testID="upload-close-btn"><X color={colors.textPrimary} size={22} /></TouchableOpacity>
-        <Text style={styles.topTitle}>Review</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <UploadHeader title="Review" />
       <Stepper step={3} />
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.h1}>Almost done</Text>

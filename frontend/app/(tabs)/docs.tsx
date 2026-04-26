@@ -1,44 +1,36 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, FlatList, Image } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Search, FileText, Lock, Calendar as CalIcon, Calendar } from 'lucide-react-native';
+import { Search, FileText, Lock, Calendar as CalIcon, Filter as FilterIcon } from 'lucide-react-native';
 import { useVault } from '../../src/contexts/VaultContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
-import { Chip, StatusBadge } from '../../src/components/UI';
-import { DateRangeSheet, EMPTY_RANGE, isRangeActive, rangeChipLabel, applyRange, type DateRange } from '../../src/components/DateRangeSheet';
+import { StatusBadge } from '../../src/components/UI';
+import { FilterSheet, EMPTY_FILTER, applyFilter, activeFilterCount, type FilterState } from '../../src/components/FilterSheet';
 import { colors, spacing, radius } from '../../src/constants/theme';
 import { fmtDate, getDocStatus } from '../../src/utils/date';
 import { parseISO, format, startOfMonth } from 'date-fns';
 
-const STATUS_FILTERS = ['All', 'Expiring Soon', 'Valid', 'Expired'] as const;
 type GroupBy = 'list' | 'month';
 
 export default function Docs() {
   const { docs, family } = useVault();
   const t = useTheme();
   const router = useRouter();
-  const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>('All');
-  const [member, setMember] = useState<string | 'all'>('all');
+  const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [q, setQ] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('list');
-  const [range, setRange] = useState<DateRange>(EMPTY_RANGE);
-  const [dateOpen, setDateOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
     let list = docs.filter((d) => {
       if (ql && !d.name.toLowerCase().includes(ql) && !d.category.toLowerCase().includes(ql)) return false;
-      if (member !== 'all' && d.ownerId !== member) return false;
-      const s = getDocStatus(d.expiryDate);
-      if (filter === 'Expiring Soon' && s !== 'expiring_soon') return false;
-      if (filter === 'Valid' && !(s === 'valid' || s === 'none')) return false;
-      if (filter === 'Expired' && s !== 'expired') return false;
       return true;
     });
-    list = applyRange(list, range);
+    list = applyFilter(list, filter);
     return list;
-  }, [docs, filter, q, member, range]);
+  }, [docs, q, filter]);
 
   const grouped = useMemo(() => {
     if (groupBy === 'list') return null;
@@ -74,13 +66,18 @@ export default function Docs() {
     );
   };
 
+  const fcount = activeFilterCount(filter);
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Documents</Text>
-        <Text style={styles.sub}>{docs.length} encrypted items</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Documents</Text>
+          <Text style={styles.sub}>{filtered.length} of {docs.length} encrypted items</Text>
+        </View>
       </View>
-      <View style={{ paddingHorizontal: spacing.xxl }}>
+
+      <View style={styles.toolbar}>
         <View style={styles.search} testID="docs-search">
           <Search color={colors.textTertiary} size={18} strokeWidth={1.6} />
           <TextInput
@@ -92,40 +89,18 @@ export default function Docs() {
             testID="docs-search-input"
           />
         </View>
-      </View>
-
-      {/* Status filters - horizontal, single row */}
-      <View style={styles.filterRowWrap} testID="filter-row-status">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          {STATUS_FILTERS.map((f) => (
-            <Chip key={f} label={f} active={filter === f} onPress={() => setFilter(f)} testID={`filter-${f.replace(' ', '-').toLowerCase()}`} />
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Member filter */}
-      <View style={styles.filterRowWrap} testID="filter-row-member">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          <Chip label="All members" active={member === 'all'} onPress={() => setMember('all')} testID="member-filter-all" />
-          {family.map((f) => (
-            <Chip key={f.id} label={f.name} active={member === f.id} onPress={() => setMember(f.id)} testID={`member-filter-${f.id}`} />
-          ))}
-          <TouchableOpacity
-            onPress={() => setDateOpen(true)}
-            style={[styles.dateChip, isRangeActive(range) && { backgroundColor: t.accentDark, borderColor: t.accentDark }]}
-            testID="date-range-chip"
-          >
-            <Calendar color={isRangeActive(range) ? '#fff' : colors.textSecondary} size={12} strokeWidth={2} />
-            <Text style={[styles.dateChipTxt, { color: isRangeActive(range) ? '#fff' : colors.textSecondary }]} numberOfLines={1}>
-              {rangeChipLabel(range)}
-            </Text>
-            {isRangeActive(range) && (
-              <TouchableOpacity onPress={(e) => { e.stopPropagation(); setRange(EMPTY_RANGE); }} testID="date-range-chip-clear">
-                <Text style={{ color: '#fff', fontSize: 12, marginLeft: 2 }}>×</Text>
-              </TouchableOpacity>
-            )}
-          </TouchableOpacity>
-        </ScrollView>
+        <TouchableOpacity
+          style={[styles.filterBtn, fcount > 0 && { backgroundColor: t.accentDark, borderColor: t.accentDark }]}
+          onPress={() => setFilterOpen(true)}
+          testID="docs-filter-btn"
+        >
+          <FilterIcon color={fcount > 0 ? '#fff' : colors.textPrimary} size={18} strokeWidth={1.8} />
+          {fcount > 0 && (
+            <View style={[styles.filterBadge, { backgroundColor: t.accent }]}>
+              <Text style={styles.filterBadgeTxt}>{fcount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Group toggle */}
@@ -135,7 +110,7 @@ export default function Docs() {
         </TouchableOpacity>
         <TouchableOpacity style={[styles.gBtn, groupBy === 'month' && { backgroundColor: t.accentDark }]} onPress={() => setGroupBy('month')} testID="group-month">
           <CalIcon color={groupBy === 'month' ? '#fff' : colors.textSecondary} size={14} strokeWidth={2} />
-          <Text style={[styles.gTxt, { color: groupBy === 'month' ? '#fff' : colors.textSecondary }]}>By Upload Month</Text>
+          <Text style={[styles.gTxt, { color: groupBy === 'month' ? '#fff' : colors.textSecondary }]}>By month</Text>
         </TouchableOpacity>
       </View>
 
@@ -166,20 +141,28 @@ export default function Docs() {
         </ScrollView>
       )}
 
-      <DateRangeSheet visible={dateOpen} onClose={() => setDateOpen(false)} value={range} onChange={setRange} />
+      <FilterSheet
+        visible={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        value={filter}
+        onChange={setFilter}
+        family={family}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: { paddingHorizontal: spacing.xxl, paddingTop: spacing.md, paddingBottom: spacing.md },
+  header: { paddingHorizontal: spacing.xxl, paddingTop: spacing.md, paddingBottom: spacing.md, flexDirection: 'row', alignItems: 'center' },
   title: { fontSize: 28, fontWeight: '800', color: colors.textPrimary, letterSpacing: -0.5 },
   sub: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingHorizontal: 14, paddingVertical: 12 },
+  toolbar: { flexDirection: 'row', gap: 10, paddingHorizontal: spacing.xxl, alignItems: 'center' },
+  search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingHorizontal: 14, paddingVertical: 12 },
   searchInput: { flex: 1, fontSize: 14, color: colors.textPrimary, padding: 0 },
-  filterRowWrap: { marginTop: spacing.md, height: 40 },
-  filterRow: { paddingHorizontal: spacing.xxl, gap: 8, alignItems: 'center', flexDirection: 'row' },
+  filterBtn: { width: 48, height: 48, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, position: 'relative' },
+  filterBadge: { position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.bg },
+  filterBadgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
   groupToggle: { flexDirection: 'row', gap: 8, paddingHorizontal: spacing.xxl, marginTop: spacing.md, marginBottom: spacing.md },
   gBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.elevated },
   gTxt: { fontSize: 12, fontWeight: '700' },
@@ -195,6 +178,4 @@ const styles = StyleSheet.create({
   emptySub: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
   emptyBtn: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: radius.pill, marginTop: spacing.xl },
   emptyBtnText: { color: '#fff', fontWeight: '700' },
-  dateChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexShrink: 0, maxWidth: 220 },
-  dateChipTxt: { fontSize: 12, fontWeight: '700' },
 });

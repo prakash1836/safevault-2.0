@@ -30,11 +30,7 @@ export default function DetailsStep() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.close} testID="upload-close-btn"><X color={colors.textPrimary} size={22} /></TouchableOpacity>
-        <Text style={styles.topTitle}>Add to Vault</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <UploadHeader title="Add to Vault" />
       <Stepper step={2} />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.h1}>Document details</Text>
