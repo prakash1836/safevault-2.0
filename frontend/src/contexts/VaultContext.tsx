@@ -22,6 +22,7 @@ interface VaultCtx {
   addEvent: (e: Omit<VaultEvent, 'id'>) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
   addFamily: (m: Omit<FamilyMember, 'id'>) => Promise<void>;
+  updateFamily: (id: string, patch: Partial<FamilyMember>) => Promise<void>;
   removeFamily: (id: string) => Promise<void>;
   refreshDrive: () => Promise<void>;
   vaultHealth: number;
@@ -189,6 +190,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     [family]
   );
 
+  const updateFamily: VaultCtx['updateFamily'] = useCallback(
+    async (id, patch) => {
+      const next = family.map((f) => (f.id === id ? { ...f, ...patch } : f));
+      setFamily(next);
+      await storage.setFamily(next);
+    },
+    [family]
+  );
+
   const removeFamily: VaultCtx['removeFamily'] = useCallback(
     async (id) => {
       const next = family.filter((f) => f.id !== id);
@@ -238,6 +248,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         addEvent,
         deleteEvent,
         addFamily,
+        updateFamily,
         removeFamily,
         refreshDrive,
         vaultHealth,
