@@ -8,6 +8,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useVault } from '../../src/contexts/VaultContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { Card, StatusBadge, PrimaryButton } from '../../src/components/UI';
+import { EncryptedImagePreview } from '../../src/components/EncryptedImagePreview';
 import { colors, radius, spacing } from '../../src/constants/theme';
 import { fmtDate, getDocStatus } from '../../src/utils/date';
 import { getKey, decryptToBase64 } from '../../src/services/encryption';
@@ -100,6 +101,10 @@ export default function DocDetail() {
           <View style={{ flex: 1 }}>
             <PrimaryButton title="Download" onPress={onDownload} loading={downloading} variant="secondary" icon={<Download color={t.accent} size={16} />} testID="doc-download-action" />
           </View>
+        </View>
+
+        <View style={{ marginTop: spacing.lg }}>
+          <EncryptedImagePreview doc={{ id: doc.id, mimeType: doc.mimeType, localUri: doc.localUri, fileId: doc.fileId }} />
         </View>
 
         <Card style={{ marginTop: spacing.lg }}>

@@ -2,10 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, FlatList, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Search, FileText, Lock, Calendar as CalIcon } from 'lucide-react-native';
+import { Search, FileText, Lock, Calendar as CalIcon, Calendar } from 'lucide-react-native';
 import { useVault } from '../../src/contexts/VaultContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { Chip, StatusBadge } from '../../src/components/UI';
+import { DateRangeSheet, EMPTY_RANGE, isRangeActive, rangeChipLabel, applyRange, type DateRange } from '../../src/components/DateRangeSheet';
 import { colors, spacing, radius } from '../../src/constants/theme';
 import { fmtDate, getDocStatus } from '../../src/utils/date';
 import { parseISO, format, startOfMonth } from 'date-fns';
@@ -21,10 +22,12 @@ export default function Docs() {
   const [member, setMember] = useState<string | 'all'>('all');
   const [q, setQ] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('list');
+  const [range, setRange] = useState<DateRange>(EMPTY_RANGE);
+  const [dateOpen, setDateOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
-    return docs.filter((d) => {
+    let list = docs.filter((d) => {
       if (ql && !d.name.toLowerCase().includes(ql) && !d.category.toLowerCase().includes(ql)) return false;
       if (member !== 'all' && d.ownerId !== member) return false;
       const s = getDocStatus(d.expiryDate);
@@ -33,7 +36,9 @@ export default function Docs() {
       if (filter === 'Expired' && s !== 'expired') return false;
       return true;
     });
-  }, [docs, filter, q, member]);
+    list = applyRange(list, range);
+    return list;
+  }, [docs, filter, q, member, range]);
 
   const grouped = useMemo(() => {
     if (groupBy === 'list') return null;
@@ -105,6 +110,21 @@ export default function Docs() {
           {family.map((f) => (
             <Chip key={f.id} label={f.name} active={member === f.id} onPress={() => setMember(f.id)} testID={`member-filter-${f.id}`} />
           ))}
+          <TouchableOpacity
+            onPress={() => setDateOpen(true)}
+            style={[styles.dateChip, isRangeActive(range) && { backgroundColor: t.accentDark, borderColor: t.accentDark }]}
+            testID="date-range-chip"
+          >
+            <Calendar color={isRangeActive(range) ? '#fff' : colors.textSecondary} size={12} strokeWidth={2} />
+            <Text style={[styles.dateChipTxt, { color: isRangeActive(range) ? '#fff' : colors.textSecondary }]} numberOfLines={1}>
+              {rangeChipLabel(range)}
+            </Text>
+            {isRangeActive(range) && (
+              <TouchableOpacity onPress={(e) => { e.stopPropagation(); setRange(EMPTY_RANGE); }} testID="date-range-chip-clear">
+                <Text style={{ color: '#fff', fontSize: 12, marginLeft: 2 }}>×</Text>
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
         </ScrollView>
       </View>
 
@@ -145,6 +165,8 @@ export default function Docs() {
           ))}
         </ScrollView>
       )}
+
+      <DateRangeSheet visible={dateOpen} onClose={() => setDateOpen(false)} value={range} onChange={setRange} />
     </SafeAreaView>
   );
 }
@@ -173,4 +195,6 @@ const styles = StyleSheet.create({
   emptySub: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
   emptyBtn: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: radius.pill, marginTop: spacing.xl },
   emptyBtnText: { color: '#fff', fontWeight: '700' },
+  dateChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexShrink: 0, maxWidth: 220 },
+  dateChipTxt: { fontSize: 12, fontWeight: '700' },
 });

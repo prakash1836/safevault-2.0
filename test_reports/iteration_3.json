@@ -1,0 +1,39 @@
+{
+  "summary": "SafeVault V2.1 follow-up — tested two new features: (1) Docs date-range filter chip + sheet, (2) EncryptedImagePreview component on doc detail. Both features work end-to-end on mobile web preview. No console errors. All testIDs from spec are present and correctly wired. Single-row regression for status/member filter rows is preserved (40px). For seeded PDF docs the preview correctly shows the preview-non-image placeholder.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_3.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "DateRangeSheet preset grid wraps to 2-3 rows on a 390px viewport; presets that fall below the visible viewport require scroll_into_view in tests. Not a bug — just noted as a UX consideration if presets row should auto-scroll into view when sheet opens.",
+    "Pinch/pan gesture on EncryptedImagePreview cannot be exercised on web Playwright (touch gestures); component renders without errors and gesture-handler imports do not break web rendering — verified."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "seed_data_creation": "None — used built-in Demo Mode seed (6 PDF docs, 3 family members).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Demo Mode (login-demo-btn → onboarding-continue-btn) is the standard entry. Seeded docs are PDFs (mimeType: application/pdf), so EncryptedImagePreview correctly shows preview-non-image with no reveal-btn. To test the actual image reveal/pinch path, an image upload via /upload flow is required, but pinch gestures can't be triggered in Playwright web — only render verification is possible.",
+  "test_results_detail": {
+    "docs_date_range": {
+      "chip_default_label": "PASS — 'Date range'",
+      "sheet_opens": "PASS — date-range-sheet visible",
+      "all_testids_present": "PASS — date-field-expiry, date-field-issue, preset-next-7-days, preset-next-30-days, preset-next-90-days, preset-this-month, preset-next-month, preset-past-30-days, date-range-from, date-range-to, date-range-clear, date-range-apply",
+      "preset_next_30_apply": "PASS — chip shows 'Apr 26, 2026 → May 26, 2026', bg=rgb(28,63,58) accentDark, doc list filtered from 6 → 1 (Health Insurance, expires May 14 2026)",
+      "chip_clear_x": "PASS — × resets chip to 'Date range' and restores count to 6",
+      "issue_field_filter": "PASS — switching to date-field-issue + preset-past-30-days filtered list to 0 docs (no seeded doc has issueDate in past 30 days, expected)",
+      "regression_row_heights": "PASS — filter-row-status=40px, filter-row-member=40px"
+    },
+    "encrypted_image_preview": {
+      "pdf_placeholder": "PASS — preview-non-image rendered for application/pdf doc",
+      "no_reveal_btn_for_pdf": "PASS — reveal-btn correctly absent on non-image",
+      "no_render_errors": "PASS — 0 console errors on doc detail screen",
+      "gesture_handler_import": "PASS — react-native-gesture-handler / reanimated imports do not break web rendering"
+    }
+  }
+}
