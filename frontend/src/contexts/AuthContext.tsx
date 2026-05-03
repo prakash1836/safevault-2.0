@@ -1,85 +1,119 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import type { AuthUser } from '../types';
+import { storage } from '../services/storage';
+import { fetchUserInfo, buildDemoUser, GOOGLE_SCOPES } from '../services/auth';
+import { deriveAndStoreKey, clearKey, secureStore } from '../services/encryption';
 import * as AuthSession from 'expo-auth-session';
-import { authService } from '../services/authService';
-import type { AuthSession as AppAuthSession } from '../types';
-import { GOOGLE_SCOPES } from '../utils/constants';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 
-interface AuthContextValue {
-  session: AppAuthSession | null;
+WebBrowser.maybeCompleteAuthSession();
+
+interface AuthCtx {
+  user: AuthUser | null;
   loading: boolean;
-  clientIdMissing: boolean;
-  signIn: () => Promise<AppAuthSession | null>;
-  signOut: () => Promise<void>;
-  request: AuthSession.AuthRequest | null;
+  loginDemo: () => Promise<void>;
+  loginGoogle: () => Promise<{ ok: boolean; reason?: string }>;
+  logout: () => Promise<void>;
+  hasGoogleConfig: boolean;
 }
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const AuthContext = createContext<AuthCtx | null>(null);
+
+const TOKEN_KEY = 'safevault.google.token';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<AppAuthSession | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const clientId = authService.clientId;
-  const redirectUri = authService.redirectUri;
-  const clientIdMissing = !clientId;
+  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB;
+  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID;
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS;
+  const hasGoogleConfig = !!webClientId;
 
-  const [request, , promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: clientId || 'MISSING',
-      scopes: GOOGLE_SCOPES,
-      redirectUri,
-      responseType: AuthSession.ResponseType.Token,
-      usePKCE: false,
-      extraParams: {
-        access_type: 'online',
-        include_granted_scopes: 'true',
-        prompt: 'consent',
-      },
-    },
-    authService.discovery,
-  );
+  // Configure Google AuthRequest hook (no backend, implicit token flow with drive.file scope)
+  // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+  const [, response, promptAsync] = Google.useAuthRequest({
+    webClientId,
+    androidClientId,
+    iosClientId,
+    scopes: GOOGLE_SCOPES,
+    selectAccount: true,
+  });
 
-  // Restore stored session on mount
   useEffect(() => {
     (async () => {
-      const stored = await authService.getStoredSession();
-      setSession(stored);
+      const saved = await storage.getUser();
+      if (saved) setUser(saved);
       setLoading(false);
     })();
   }, []);
 
-  const signIn = useCallback(async (): Promise<AppAuthSession | null> => {
-    if (!clientId) {
-      throw new Error('Google Client ID is not configured. See SETUP_OAUTH.md.');
-    }
-    const result = await promptAsync();
-    if (result.type === 'success') {
-      const newSession = await authService.handleAuthResponse(result);
-      setSession(newSession);
-      return newSession;
-    }
-    if (result.type === 'error') {
-      throw new Error(result.error?.message || 'Google sign-in failed.');
-    }
-    return null;
-  }, [promptAsync, clientId]);
+  // Handle redirect/response from Google auth
+  useEffect(() => {
+    (async () => {
+      if (response?.type === 'success') {
+        const accessToken = (response as any).authentication?.accessToken || (response as any).params?.access_token;
+        if (!accessToken) return;
+        try {
+          const info = await fetchUserInfo(accessToken);
+          const u: AuthUser = {
+            id: info.sub,
+            email: info.email,
+            name: info.name,
+            picture: info.picture,
+            accessToken,
+            demo: false,
+          };
+          await secureStore.set(TOKEN_KEY, accessToken);
+          await deriveAndStoreKey(u.id);
+          await storage.setUser(u);
+          setUser(u);
+        } catch (e) {
+          console.warn('Google login post-step failed', e);
+        }
+      }
+    })();
+  }, [response]);
 
-  const signOut = useCallback(async () => {
-    await authService.signOut();
-    setSession(null);
+  const loginDemo = useCallback(async () => {
+    const u = buildDemoUser();
+    await deriveAndStoreKey(u.id);
+    await storage.setUser(u);
+    setUser(u);
+  }, []);
+
+  const loginGoogle = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
+    if (!hasGoogleConfig) {
+      await loginDemo();
+      return { ok: true, reason: 'demo' };
+    }
+    try {
+      const r = await promptAsync();
+      if (r.type === 'success') return { ok: true };
+      if (r.type === 'cancel' || r.type === 'dismiss') return { ok: false, reason: 'cancelled' };
+      return { ok: false, reason: 'error' };
+    } catch (e: any) {
+      return { ok: false, reason: e?.message || 'error' };
+    }
+  }, [hasGoogleConfig, promptAsync, loginDemo]);
+
+  const logout = useCallback(async () => {
+    await clearKey();
+    await secureStore.del(TOKEN_KEY);
+    await storage.setUser(null);
+    setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{ session, loading, clientIdMissing, signIn, signOut, request }}
-    >
+    <AuthContext.Provider value={{ user, loading, loginDemo, loginGoogle, logout, hasGoogleConfig }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth(): AuthContextValue {
+export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
+  if (!ctx) throw new Error('useAuth outside provider');
   return ctx;
 }

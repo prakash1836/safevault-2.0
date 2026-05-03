@@ -1,48 +1,31 @@
-import React, { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/contexts/AuthContext';
-import { passwordService } from '../src/services/passwordService';
-import { usePassword } from '../src/contexts/PasswordContext';
-import { theme } from '../src/theme/theme';
+import { usePermissions } from '../src/contexts/PermissionsContext';
+import { useTheme } from '../src/contexts/ThemeContext';
+import { colors } from '../src/constants/theme';
 
 export default function Index() {
-  const { session, loading } = useAuth();
-  const { sessionPassword } = usePassword();
+  const { user, loading } = useAuth();
+  const { onboarded } = usePermissions();
+  const t = useTheme();
   const router = useRouter();
 
   useEffect(() => {
     if (loading) return;
-    (async () => {
-      if (!session) {
-        router.replace('/login');
-        return;
-      }
-      const hasPw = await passwordService.hasPassword();
-      if (!hasPw) {
-        router.replace('/setup-password');
-        return;
-      }
-      if (!sessionPassword) {
-        router.replace('/unlock');
-        return;
-      }
-      router.replace('/vault');
-    })();
-  }, [loading, session, sessionPassword, router]);
+    if (!user) router.replace('/login');
+    else if (!onboarded) router.replace('/onboarding');
+    else router.replace('/(tabs)/home');
+  }, [loading, user, onboarded, router]);
 
   return (
-    <View style={styles.container}>
-      <ActivityIndicator color={theme.colors.accent} size="large" />
+    <View style={styles.container} testID="splash">
+      <ActivityIndicator color={t.accent} size="large" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  container: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
 });
