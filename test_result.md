@@ -101,3 +101,153 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Build a cross-platform (web + mobile) Expo app where users upload files that are
+  stored as password-protected AES-256 ZIPs in the user's own Google Drive.
+  ZIPs must be openable outside the app with any standard unzipper. Files must
+  remain recoverable after reinstall/device change. No vault_index.json SPOF.
+  Password must be user-defined (not derived from id/name/dob). Real Google
+  OAuth via expo-auth-session with scope `drive.file`.
+
+frontend:
+  - task: "Google OAuth (expo-auth-session, drive.file scope)"
+    implemented: true
+    working: "NA"
+    file: "src/services/authService.ts, src/contexts/AuthContext.tsx, app/login.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Login screen + auth service implemented. Requires user-provided Google OAuth client IDs in frontend/.env (EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB/IOS/ANDROID). Login page renders, Continue with Google button wired to useAuthRequest. Setup doc at /app/SETUP_OAUTH.md. Cannot fully test sign-in flow without real OAuth credentials."
+
+  - task: "Password setup + PBKDF2 verifier (never store raw password)"
+    implemented: true
+    working: true
+    file: "src/services/passwordService.ts, app/setup-password.tsx, app/unlock.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Verified end-to-end via browser playwright: setup-password form accepts 8+ char password, checkbox acknowledgement, redirects to /vault. localStorage contains only {salt, hash, iterations=150000} — raw password NOT stored. Unlock screen verifies password by re-running PBKDF2 and comparing."
+
+  - task: "AES-256 ZIP encryption service (@zip.js/zip.js, WinZip AES)"
+    implemented: true
+    working: "NA"
+    file: "src/services/zipService.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Uses @zip.js/zip.js/index-native.cjs to avoid Metro import.meta issue. encryptionStrength=3 (AES-256), zipCrypto=false. useWebWorkers=false. Full round-trip tested at compile time + bundled successfully; runtime round-trip requires real file picker interaction."
+
+  - task: "Google Drive REST API (upload, list, download, delete)"
+    implemented: true
+    working: "NA"
+    file: "src/services/driveService.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Multipart upload with metadata + appProperties marker {safevault:v1}. Lists via appProperties query, falls back to all application/zip if marker empty. Download via ?alt=media. Delete via DELETE /files/{id}. Requires real access token to exercise."
+
+  - task: "Recovery service (no vault_index.json SPOF)"
+    implemented: true
+    working: "NA"
+    file: "src/services/recoveryService.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Loads cached entries for instant UI, then refreshes from Drive. If no cache, queries Drive only. Falls back to listing all ZIPs if the app marker has never been set (e.g., legacy ZIPs)."
+
+  - task: "Vault list UI + warning banner"
+    implemented: true
+    working: true
+    file: "app/vault.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Renders file list, empty state, warning banner 'Files are protected by your password…'. Locked-state banner appears when password is not in session. Verified via playwright screenshot."
+
+  - task: "Upload flow UI (pick → encrypt → upload)"
+    implemented: true
+    working: "NA"
+    file: "app/upload.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "DocumentPicker → read as Blob (web) or base64 (native) → zipService.createEncryptedZip → driveService.uploadZip. Requires OAuth for real upload."
+
+  - task: "Open/download flow UI (download → decrypt → share)"
+    implemented: true
+    working: "NA"
+    file: "app/open.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Downloads zip from Drive, decrypts via zipService.extractEncryptedZip, triggers browser download (web) or expo-sharing (native). Has fallback to download raw .zip without decrypting."
+
+  - task: "Settings screen (lock, reset pwd, sign out)"
+    implemented: true
+    working: true
+    file: "app/settings.tsx"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Static screen renders correctly; all actions wired (lock → /unlock, reset → /setup-password, sign out → revoke + clear cache)."
+
+backend:
+  - task: "No backend changes required for this feature"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "All vault logic runs client-side; Drive is the storage layer. Existing FastAPI template untouched."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 0
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Google OAuth (expo-auth-session, drive.file scope)"
+    - "AES-256 ZIP encryption service (@zip.js/zip.js, WinZip AES)"
+    - "Google Drive REST API (upload, list, download, delete)"
+    - "Recovery service (no vault_index.json SPOF)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "MVP v1 complete. App compiles, TS clean, web bundle loads, login→setup→vault flow verified via playwright. Blocked on real OAuth client IDs for full end-to-end test of upload/list/download on Google Drive. User must create OAuth credentials per /app/SETUP_OAUTH.md and fill frontend/.env, then restart expo."

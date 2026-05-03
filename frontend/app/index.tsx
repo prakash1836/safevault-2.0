@@ -1,16 +1,39 @@
-import { Text, View, StyleSheet, Image } from "react-native";
-
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import React, { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useAuth } from '../src/contexts/AuthContext';
+import { passwordService } from '../src/services/passwordService';
+import { usePassword } from '../src/contexts/PasswordContext';
+import { theme } from '../src/theme/theme';
 
 export default function Index() {
-  console.log(EXPO_PUBLIC_BACKEND_URL, "EXPO_PUBLIC_BACKEND_URL");
+  const { session, loading } = useAuth();
+  const { sessionPassword } = usePassword();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+    (async () => {
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      const hasPw = await passwordService.hasPassword();
+      if (!hasPw) {
+        router.replace('/setup-password');
+        return;
+      }
+      if (!sessionPassword) {
+        router.replace('/unlock');
+        return;
+      }
+      router.replace('/vault');
+    })();
+  }, [loading, session, sessionPassword, router]);
 
   return (
     <View style={styles.container}>
-      <Image
-        source={require("../assets/images/app-image.png")}
-        style={styles.image}
-      />
+      <ActivityIndicator color={theme.colors.accent} size="large" />
     </View>
   );
 }
@@ -18,13 +41,8 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0c0c0c",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "contain",
+    backgroundColor: theme.colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
