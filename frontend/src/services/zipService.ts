@@ -10,6 +10,7 @@ import {
   Uint8ArrayReader,
   Uint8ArrayWriter,
   configure,
+// @ts-ignore - subpath has no types; re-exports the same API
 } from '@zip.js/zip.js/index-native.cjs';
 
 // Never use web workers; crypto/deflate runs on the JS thread.

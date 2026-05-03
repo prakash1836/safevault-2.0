@@ -7,10 +7,13 @@ import {
   View,
   ScrollView,
   Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../src/contexts/AuthContext';
+import { authService } from '../src/services/authService';
 import { theme } from '../src/theme/theme';
 
 export default function LoginScreen() {
@@ -18,6 +21,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDiag, setShowDiag] = useState(false);
 
   const handleSignIn = async () => {
     setError(null);
@@ -94,6 +98,33 @@ export default function LoginScreen() {
         <Text style={styles.fineprint}>
           We request only the “Drive file” scope — we can only see files this app creates.
         </Text>
+
+        <Pressable onPress={() => setShowDiag(!showDiag)}>
+          <Text style={styles.diagToggle}>
+            {showDiag ? '▾ Hide' : '▸ Show'} OAuth diagnostic info
+          </Text>
+        </Pressable>
+
+        {showDiag && (
+          <View style={styles.diagBox}>
+            <DiagRow label="Platform" value={Platform.OS} />
+            <DiagRow label="In Expo Go?" value={authService.isExpoGo ? 'yes' : 'no'} />
+            <DiagRow
+              label="Client ID"
+              value={authService.clientId || '(missing)'}
+              copy
+            />
+            <DiagRow
+              label="Redirect URI"
+              value={authService.redirectUri}
+              copy
+            />
+            <Text style={styles.diagHint}>
+              Add the Redirect URI above to your Google Cloud Console →
+              OAuth Client ID → Authorized redirect URIs. Then retry sign-in.
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -104,6 +135,32 @@ function Bullet({ icon, text }: { icon: string; text: string }) {
     <View style={styles.bulletRow}>
       <Text style={styles.bulletIcon}>{icon}</Text>
       <Text style={styles.bulletText}>{text}</Text>
+    </View>
+  );
+}
+
+function DiagRow({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await Clipboard.setStringAsync(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+  return (
+    <View style={styles.diagRow}>
+      <Text style={styles.diagLabel}>{label}</Text>
+      <View style={styles.diagValueWrap}>
+        <Text style={styles.diagValue} numberOfLines={2} selectable>{value}</Text>
+        {copy && (
+          <Pressable onPress={onCopy}>
+            <Text style={styles.diagCopy}>{copied ? '✓ copied' : 'copy'}</Text>
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -155,4 +212,19 @@ const styles = StyleSheet.create({
   fineprint: {
     color: theme.colors.textMuted, fontSize: theme.font.xs, textAlign: 'center',
   },
+  diagToggle: {
+    color: theme.colors.textMuted, fontSize: theme.font.xs, textAlign: 'center',
+    textDecorationLine: 'underline', marginTop: theme.spacing.sm,
+  },
+  diagBox: {
+    backgroundColor: theme.colors.surfaceAlt,
+    borderColor: theme.colors.border, borderWidth: 1,
+    padding: theme.spacing.md, borderRadius: theme.radius.md, gap: theme.spacing.sm,
+  },
+  diagRow: { gap: 2 },
+  diagLabel: { color: theme.colors.textMuted, fontSize: theme.font.xs, textTransform: 'uppercase', letterSpacing: 1 },
+  diagValueWrap: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  diagValue: { color: theme.colors.text, fontSize: theme.font.sm, flex: 1, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  diagCopy: { color: theme.colors.accent2, fontSize: theme.font.xs, fontWeight: '700' },
+  diagHint: { color: theme.colors.textMuted, fontSize: theme.font.xs, marginTop: theme.spacing.xs, lineHeight: 16 },
 });
