@@ -3,6 +3,13 @@
 ## Vision
 A no-server, client-encrypted personal document vault that lives in the user's own Google Drive. Trust-forward, family-friendly, beautifully designed.
 
+## ⚠️ Known Limitation: Google OAuth in Expo Go
+Google OAuth does not work in Expo Go due to redirect URI requirements. Google requires redirect URIs with proper domains (`.com`, `.org`, etc.) and does not accept `exp://` scheme URLs.
+
+**Workarounds:**
+1. **Demo Mode** - Fully functional, uses local storage instead of Google Drive
+2. **Development Build** - Build a custom Expo development build for full Google OAuth support
+
 ## Implemented Features
 
 ### Authentication & Onboarding

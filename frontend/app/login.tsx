@@ -27,7 +27,19 @@ export default function Login() {
     setLoading(null);
     if (!r.ok) {
       if (r.reason === 'cancelled') return;
-      Alert.alert('Sign-in failed', 'We could not connect to Google. Try demo mode or check your network.');
+      // Show helpful message about Expo Go limitations
+      Alert.alert(
+        'Google Sign-in Not Available',
+        'Google OAuth does not work in Expo Go due to redirect URI limitations.\n\n' +
+        'Options:\n' +
+        '• Use Demo Mode to test all features\n' +
+        '• Build a Development Build for full Google OAuth\n\n' +
+        'Demo Mode provides the same experience with local storage.',
+        [
+          { text: 'Try Demo Mode', onPress: onDemo },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
     }
   };
   const onDemo = async () => {
