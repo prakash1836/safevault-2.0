@@ -1,0 +1,128 @@
+{
+  "theme": "light",
+  "archetype": "Organic & Earthy",
+  "design_philosophy": "A secure personal document vault that feels premium, reassuring, and organic. Unlike typical 'hacker-blue' security apps, SafeVault uses grounding earthy tones (forest green, sage, off-white, terracotta) to evoke the feeling of a physical, premium leather-bound family safe. Security should feel peaceful, not alarming.",
+  "typography": {
+    "fonts": {
+      "heading": "Outfit",
+      "body": "Work Sans",
+      "mono": "JetBrains Mono"
+    },
+    "scale": {
+      "h1": "text-4xl font-bold tracking-tight",
+      "h2": "text-2xl font-bold tracking-tight",
+      "h3": "text-xl font-semibold tracking-tight",
+      "body": "text-base leading-relaxed tracking-normal",
+      "small": "text-sm leading-normal",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em]"
+    }
+  },
+  "colors": {
+    "background": {
+      "default": "#FCFCFA",
+      "surface": "#FFFFFF",
+      "elevated": "#F4F5F0"
+    },
+    "text": {
+      "primary": "#1C3F3A",
+      "secondary": "#5C6A64",
+      "tertiary": "#8A9A93",
+      "inverse": "#FFFFFF"
+    },
+    "primary": {
+      "default": "#4A7D6A",
+      "hover": "#3B6655",
+      "surface": "#E5EFEA"
+    },
+    "status": {
+      "valid": "#4A7D6A",
+      "expiring_soon": "#DDA750",
+      "expired": "#D16B54",
+      "overdue": "#B94C36"
+    },
+    "border": {
+      "default": "#EAE8E1",
+      "focus": "#4A7D6A"
+    }
+  },
+  "layout_and_spacing": {
+    "philosophy": "Generous spacing. Let the documents breathe. Avoid overwhelming the user with dense data tables on mobile.",
+    "screen_padding": "px-6 py-8",
+    "card_padding": "p-5",
+    "gap": {
+      "small": "gap-3",
+      "medium": "gap-5",
+      "large": "gap-8"
+    },
+    "border_radius": {
+      "card": "rounded-2xl",
+      "button": "rounded-full",
+      "chip": "rounded-full"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#4A7D6A] text-white rounded-full py-4 px-6 font-semibold flex items-center justify-center",
+      "secondary": "bg-[#E5EFEA] text-[#4A7D6A] rounded-full py-4 px-6 font-semibold flex items-center justify-center",
+      "fab": "absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#1C3F3A] w-14 h-14 rounded-full shadow-lg flex items-center justify-center z-50"
+    },
+    "cards": {
+      "document": "bg-white rounded-2xl border border-[#EAE8E1] p-4 flex flex-row items-center gap-4 shadow-sm",
+      "health_metric": "bg-[#1C3F3A] rounded-3xl p-6 text-white overflow-hidden relative",
+      "timeline_event": "border-l-2 border-[#EAE8E1] pl-4 py-2 mb-4 relative"
+    },
+    "chips": {
+      "active": "bg-[#1C3F3A] text-white px-4 py-2 rounded-full text-sm font-medium",
+      "inactive": "bg-white text-[#5C6A64] border border-[#EAE8E1] px-4 py-2 rounded-full text-sm font-medium"
+    },
+    "stepper": {
+      "active_step": "w-8 h-8 rounded-full bg-[#4A7D6A] text-white flex items-center justify-center text-sm font-bold",
+      "inactive_step": "w-8 h-8 rounded-full bg-[#EAE8E1] text-[#8A9A93] flex items-center justify-center text-sm font-bold",
+      "connector": "flex-1 h-[2px] bg-[#EAE8E1]"
+    },
+    "inputs": {
+      "text": "bg-white border border-[#EAE8E1] rounded-xl px-4 py-3 text-[#1C3F3A] text-base focus:border-[#4A7D6A]"
+    }
+  },
+  "icons_strategy": "Use Lucide Icons (lucide-react-native) heavily. ShieldCheck, Lock, FolderOpen, Bell, Search, Cloud, Plus. Stroke width 1.5 for a premium, delicate feel.",
+  "media": {
+    "image_urls": {
+      "avatar_1": {
+        "url": "https://images.unsplash.com/photo-1589006227094-fc2fcf082f87?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwzfHxwZXJzb24lMjBhdmF0YXIlMjBwb3J0cmFpdCUyMGNsZWFuJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzY5NzIyMjh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "User profile avatar (Mother/Primary)",
+        "category": "avatars"
+      },
+      "avatar_2": {
+        "url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxwZXJzb24lMjBhdmF0YXIlMjBwb3J0cmFpdCUyMGNsZWFuJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzY5NzIyMjh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "User profile avatar (Daughter/Family member)",
+        "category": "avatars"
+      },
+      "avatar_3": {
+        "url": "https://images.pexels.com/photos/8217536/pexels-photo-8217536.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "User profile avatar (Father/Family member)",
+        "category": "avatars"
+      },
+      "empty_state_docs": {
+        "url": "https://images.unsplash.com/photo-1618751620143-4d854c70f726?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwzfHxkb2N1bWVudCUyMGZpbGVzJTIwZm9sZGVyJTIwbmVhdCUyMG1pbmltYWx8ZW58MHx8fHwxNzc2OTcyMjMzfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Clean, neat minimal box/folder setup for empty state illustration",
+        "category": "empty_states"
+      },
+      "secure_vault_bg": {
+        "url": "https://images.unsplash.com/photo-1776774441902-1a973e9926b8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzd8MHwxfHNlYXJjaHwzfHxzZWN1cmUlMjB2YXVsdCUyMGxvY2slMjBtaW5pbWFsfGVufDB8fHx8MTc3Njk3MjIzM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Minimal lock background for login/onboarding screen hero area",
+        "category": "hero_images"
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "Use standard React Native components (View, Text, TextInput, ScrollView, TouchableOpacity).",
+    "Use NativeWind syntax (className='...') or StyleSheet objects mapped to the provided Tailwind color hex codes.",
+    "For the Vault Health %, create a prominent card at the top of the Home tab. Use #1C3F3A for the card background, and a circular progress indicator (or elegant progress bar) using #4A7D6A for the fill.",
+    "Implement the Bottom Tab navigation with standard icons. Hide the default header to keep the app looking modern and custom. Use the FAB in the center of the bottom tab bar to trigger the 'Add Document' step flow.",
+    "The step-based upload flow should use a full-screen modal or dedicated screen sequence: Type Selection -> File Upload (UI only, mocked) -> Details Input -> Review.",
+    "Use the provided image URLs for family member avatars and empty states.",
+    "Add test IDs (`data-testid`) to all interactive elements to pass tests.",
+    "Keep shadows extremely subtle: shadow-sm or shadow-[0_2px_10px_rgba(28,63,58,0.05)].",
+    "Avoid typical high-tech cyberpunk security UI. SafeVault is about familial peace of mind. Use rounded corners, soft backgrounds, and the organic color palette strictly."
+  ]
+}

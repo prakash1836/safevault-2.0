@@ -5,7 +5,6 @@ import { useRouter } from 'expo-router';
 import { X, Calendar } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Stepper } from '../../src/components/Stepper';
-import { UploadHeader } from '../../src/components/UploadHeader';
 import { useUpload } from '../../src/contexts/UploadContext';
 import { useVault } from '../../src/contexts/VaultContext';
 import { PrimaryButton } from '../../src/components/UI';

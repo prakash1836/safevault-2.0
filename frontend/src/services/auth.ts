@@ -20,7 +20,7 @@ export const GOOGLE_SCOPES = [
 ];
 
 export function getClientId(): string | null {
-  return process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB || null;
+  return process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || null;
 }
 
 export async function fetchUserInfo(accessToken: string) {
