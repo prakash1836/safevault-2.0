@@ -66,8 +66,12 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       const r = await Notifications.requestPermissionsAsync();
       const ok = !!r.granted;
       setState((s) => ({ ...s, notifications: ok }));
+      // NOTE: Just update state, do NOT auto-navigate
       return ok;
-    } catch { return false; }
+    } catch (e) { 
+      console.warn('Notification permission request failed:', e);
+      return false; 
+    }
   }, []);
 
   const requestMedia = useCallback(async () => {
@@ -76,8 +80,12 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       const r = await MediaLibrary.requestPermissionsAsync();
       const ok = !!r.granted;
       setState((s) => ({ ...s, media: ok }));
+      // NOTE: Just update state, do NOT auto-navigate
       return ok;
-    } catch { return false; }
+    } catch (e) { 
+      console.warn('Media permission request failed:', e);
+      return false; 
+    }
   }, []);
 
   const setDriveConnected = useCallback((v: boolean) => {

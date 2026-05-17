@@ -21,15 +21,26 @@ export default function Onboarding() {
 
   const onConnectDrive = async () => {
     hapt.light();
+    // If user already has a valid token, just mark drive as connected
     if (user?.demo === false && user?.accessToken) {
       setDriveConnected(true);
       hapt.success();
       return;
     }
     setBusy('drive');
-    const r = await loginGoogle();
-    setBusy(null);
-    if (r.ok) { setDriveConnected(true); hapt.success(); }
+    try {
+      const r = await loginGoogle();
+      if (r.ok) { 
+        setDriveConnected(true); 
+        hapt.success(); 
+      }
+    } catch (e) {
+      console.warn('Drive connection failed:', e);
+    } finally {
+      setBusy(null);
+    }
+    // NOTE: Do NOT auto-navigate after permission granted
+    // User must manually click Continue or Skip
   };
 
   const onContinue = async () => {
