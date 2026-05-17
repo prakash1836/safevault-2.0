@@ -108,7 +108,7 @@ export function IconButton({
   children: React.ReactNode;
   onPress: () => void;
   testID?: string;
-  variant?: 'surface' | 'elevated' | 'accent' | 'transparent';
+  variant?: 'surface' | 'elevated' | 'accent' | 'transparent' | 'danger';
   size?: number;
   badge?: string | number;
   badgeColor?: string;
@@ -125,7 +125,8 @@ export function IconButton({
     elevated: { bg: colors.elevated, border: 'transparent' },
     accent: { bg: t.accentSurface, border: 'transparent' },
     transparent: { bg: 'transparent', border: 'transparent' },
-  }[variant];
+    danger: { bg: colors.expiredSurface, border: 'transparent' },
+  }[variant] || { bg: colors.surface, border: colors.border };
 
   return (
     <Animated.View style={[animStyle, style]}>
