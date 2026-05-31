@@ -1,0 +1,15 @@
+{
+  "ignore_dirs": [
+    "node_modules",
+    ".expo",
+    ".metro-cache",
+    ".git",
+    "android",
+    "ios",
+    "build",
+    "dist",
+    ".next",
+    "coverage"
+  ],
+  "ignore_vcs": [".git"]
+}

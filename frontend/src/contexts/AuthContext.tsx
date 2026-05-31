@@ -56,13 +56,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(saved);
           } else {
             // Re-derive key from saved user
-            await deriveAndStoreKey(saved.id);
-            setUser(saved);
+            try {
+              await deriveAndStoreKey(saved.id);
+              setUser(saved);
+            } catch (keyError) {
+              console.warn('Failed to derive encryption key:', keyError);
+              // Clear corrupted session
+              await storage.setUser(null);
+              setError('Session recovery failed. Please log in again.');
+            }
           }
         }
       } catch (e) {
         console.warn('Failed to restore session:', e);
-        setError('Session restore failed');
+        // Don't set error on initial load failure, just log it
+        // User will see login screen naturally
       } finally {
         setLoading(false);
       }

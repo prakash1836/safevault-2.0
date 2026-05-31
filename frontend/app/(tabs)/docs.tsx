@@ -180,6 +180,11 @@ export default function Docs() {
           contentContainerStyle={{ paddingHorizontal: spacing.xxl, paddingBottom: 140, gap: spacing.sm }}
           renderItem={({ item, index }) => renderCard(item, index)}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          initialNumToRender={8}
+          updateCellsBatchingPeriod={50}
         />
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.xxl, paddingBottom: 140 }} showsVerticalScrollIndicator={false}>

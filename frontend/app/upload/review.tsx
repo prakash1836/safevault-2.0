@@ -17,7 +17,7 @@ import { hapt } from '../../src/utils/haptics';
 
 export default function ReviewStep() {
   const { draft, reset } = useUpload();
-  const { addDoc, family, uploading, uploadError, clearUploadError } = useVault();
+  const { addDoc, family, uploading, uploadProgress, uploadError, clearUploadError } = useVault();
   const t = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -143,6 +143,19 @@ export default function ReviewStep() {
       </ScrollView>
       
       <View style={styles.footer}>
+        {uploading && uploadProgress > 0 && (
+          <View style={styles.progressContainer} testID="upload-progress">
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${uploadProgress}%`, backgroundColor: t.accent }]} />
+            </View>
+            <Text style={styles.progressText}>
+              {uploadProgress < 25 ? 'Preparing...' :
+               uploadProgress < 50 ? 'Encrypting...' :
+               uploadProgress < 75 ? 'Uploading...' :
+               uploadProgress < 100 ? 'Finalizing...' : 'Done!'}
+            </Text>
+          </View>
+        )}
         <PrimaryButton 
           title={loading ? "Encrypting..." : "Encrypt & Save"} 
           loading={loading || uploading} 
@@ -198,6 +211,12 @@ const styles = StyleSheet.create({
   
   // Footer
   footer: { padding: spacing.xxl, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+  
+  // Upload progress
+  progressContainer: { marginBottom: spacing.md },
+  progressBar: { height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 3 },
+  progressText: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'center', fontWeight: '600' },
   
   // Success state
   successIcon: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },

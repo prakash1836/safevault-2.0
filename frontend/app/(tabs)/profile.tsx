@@ -1,8 +1,8 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Image, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Image, Alert, Switch, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { LogOut, Users, ShieldCheck, Cloud, Bell, ChevronRight, Info, Palette, AlertTriangle } from 'lucide-react-native';
+import { LogOut, Users, ShieldCheck, Cloud, Bell, ChevronRight, Info, Palette, AlertTriangle, Fingerprint } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useVault } from '../../src/contexts/VaultContext';
@@ -11,6 +11,7 @@ import { usePermissions } from '../../src/contexts/PermissionsContext';
 import { colors, spacing, radius, shadow, typography } from '../../src/constants/theme';
 import { Card, PrimaryButton } from '../../src/components/UI';
 import { PressableScale } from '../../src/components/PressableScale';
+import { biometric } from '../../src/services/biometric';
 import { hapt } from '../../src/utils/haptics';
 
 export default function Profile() {
@@ -19,6 +20,53 @@ export default function Profile() {
   const { warnings, requestNotifications, requestMedia, notifications, media, drive, setDriveConnected } = usePermissions();
   const t = useTheme();
   const router = useRouter();
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricType, setBiometricType] = useState<'fingerprint' | 'facial' | 'iris' | 'none'>('none');
+
+  useEffect(() => {
+    (async () => {
+      const info = await biometric.isAvailable();
+      setBiometricAvailable(info.available);
+      setBiometricType(info.biometricType);
+      const enabled = await biometric.isEnabled();
+      setBiometricEnabled(enabled);
+    })();
+  }, []);
+
+  const toggleBiometric = async (value: boolean) => {
+    hapt.light();
+    if (value) {
+      const ok = await biometric.enable();
+      if (ok) {
+        setBiometricEnabled(true);
+        hapt.success();
+      } else {
+        Alert.alert('Authentication failed', 'Could not enable biometric lock. Please try again.');
+      }
+    } else {
+      Alert.alert(
+        'Disable biometric lock?',
+        'You will no longer need biometrics to unlock the app.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Disable',
+            style: 'destructive',
+            onPress: async () => {
+              await biometric.disable();
+              setBiometricEnabled(false);
+              hapt.medium();
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  const biometricLabel = biometricType === 'facial' ? 'Face Unlock' :
+                          biometricType === 'fingerprint' ? 'Fingerprint Unlock' :
+                          biometricType === 'iris' ? 'Iris Unlock' : 'Biometric Lock';
 
   const onLogout = () => {
     hapt.warning();
@@ -109,6 +157,24 @@ export default function Profile() {
           <RowItem icon={<Users color={t.accent} size={18} strokeWidth={1.6} />} label="Family Members" onPress={() => router.push('/family')} testID="profile-family-row" accent={t.accentSurface} />
           <RowItem icon={<Cloud color={t.accent} size={18} strokeWidth={1.6} />} label={drive ? 'Google Drive · Connected' : 'Connect Google Drive'} onPress={() => router.replace('/onboarding')} testID="profile-drive-row" accent={t.accentSurface} />
           <RowItem icon={<Bell color={t.accent} size={18} strokeWidth={1.6} />} label="Reminder preferences" onPress={() => Alert.alert('Reminders', 'Each document can have 30‑day, 7‑day and 1‑day reminders. Configure per document.')} testID="profile-reminders-row" accent={t.accentSurface} />
+          {biometricAvailable && (
+            <View style={[styles.row, { borderBottomWidth: 1, borderBottomColor: colors.border }]} testID="profile-biometric-row">
+              <View style={[styles.rowIcon, { backgroundColor: t.accentSurface }]}>
+                <Fingerprint color={t.accent} size={18} strokeWidth={1.6} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowLabel}>{biometricLabel}</Text>
+                <Text style={styles.rowValue}>{biometricEnabled ? 'Enabled' : 'Tap to enable app lock'}</Text>
+              </View>
+              <Switch
+                value={biometricEnabled}
+                onValueChange={toggleBiometric}
+                trackColor={{ false: colors.border, true: t.accent }}
+                thumbColor="#fff"
+                testID="biometric-toggle"
+              />
+            </View>
+          )}
           <RowItem icon={<ShieldCheck color={t.accent} size={18} strokeWidth={1.6} />} label="Encryption & Security" onPress={() => Alert.alert('Security', 'Files are encrypted with AES‑256 using a key derived from your identity and a device salt. The key is stored in the OS secure enclave.')} testID="profile-security-row" accent={t.accentSurface} />
           <RowItem icon={<Info color={t.accent} size={18} strokeWidth={1.6} />} label="About SafeVault" onPress={() => Alert.alert('SafeVault', 'Zero‑server, client‑encrypted document vault. Your data stays yours.')} testID="profile-about-row" accent={t.accentSurface} last />
         </Animated.View>

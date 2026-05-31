@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import type { VaultDocument, VaultEvent, FamilyMember, DriveUsage } from '../types';
 import { storage } from '../services/storage';
 import { useAuth } from './AuthContext';
+import { useNetwork } from './NetworkContext';
 import { getKey, encryptBase64 } from '../services/encryption';
 import { uploadToDrive, deleteFromDrive, fetchDriveQuota, saveEncryptedLocal } from '../services/drive';
 import { scheduleReminders, cancelAllForId, initNotifications } from '../services/notifications';
@@ -15,6 +16,7 @@ interface VaultCtx {
   drive: DriveUsage;
   loading: boolean;
   uploading: boolean;
+  uploadProgress: number;
   uploadError: string | null;
   addDoc: (
     input: Omit<VaultDocument, 'id' | 'createdAt' | 'updatedAt' | 'encrypted' | 'fileId'> & { fileBase64: string }
@@ -28,22 +30,26 @@ interface VaultCtx {
   removeFamily: (id: string) => Promise<void>;
   refreshDrive: () => Promise<void>;
   clearUploadError: () => void;
+  retryFailedUploads: () => Promise<void>;
   vaultHealth: number;
   expiringCount: number;
 }
 
 const reminderIdsStore = new Map<string, string[]>();
+const failedUploadsStore = new Map<string, { doc: VaultDocument; cipher: string; retryCount: number }>();
 
 const VaultContext = createContext<VaultCtx | null>(null);
 
 export function VaultProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const { isOnline } = useNetwork();
   const [docs, setDocs] = useState<VaultDocument[]>([]);
   const [events, setEvents] = useState<VaultEvent[]>([]);
   const [family, setFamily] = useState<FamilyMember[]>([]);
   const [drive, setDrive] = useState<DriveUsage>({ total: 15 * 1024 * 1024 * 1024, used: 0, vault: 0 });
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -100,32 +106,41 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     async (input) => {
       if (!user) throw new Error('Not logged in');
       setUploading(true);
+      setUploadProgress(0);
       setUploadError(null);
       
       try {
         const key = await getKey();
         if (!key) throw new Error('Missing encryption key. Please log out and log in again.');
         
-        // Encrypt the file
+        // Encrypt the file (25% progress)
+        setUploadProgress(25);
         const cipher = encryptBase64(input.fileBase64, key);
         
-        // Upload to Drive or save locally
+        // Upload to Drive or save locally (50% progress)
+        setUploadProgress(50);
         let fileId: string;
         let localUri: string | null = null;
+        let uploadFailed = false;
         
         try {
           fileId = await uploadToDrive(user, input.name, cipher, input.mimeType || 'application/octet-stream');
+          setUploadProgress(75);
+          
           // For demo mode, fileId is the local file ID
           if (user.demo || fileId.startsWith('demo_')) {
             localUri = `${fileId}`;
           }
         } catch (uploadErr: any) {
           console.warn('Drive upload failed, saving locally:', uploadErr);
+          uploadFailed = true;
+          
           // Fallback to local storage
           const fakeId = 'local_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
           await saveEncryptedLocal(fakeId, cipher);
           fileId = fakeId;
           localUri = fakeId;
+          setUploadProgress(75);
         }
         
         const now = new Date().toISOString();
@@ -148,9 +163,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           updatedAt: now,
         };
         
+        // Store for retry if upload failed
+        if (uploadFailed && !user.demo) {
+          failedUploadsStore.set(doc.id, { doc, cipher, retryCount: 0 });
+        }
+        
         const next = [doc, ...docs];
         setDocs(next);
         await storage.setDocs(next);
+        setUploadProgress(90);
         
         // Schedule reminders
         if (doc.expiryDate) {
@@ -162,6 +183,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           }
         }
         
+        setUploadProgress(100);
         return doc;
       } catch (e: any) {
         const msg = e?.message || 'Upload failed';
@@ -169,10 +191,47 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         throw new Error(msg);
       } finally {
         setUploading(false);
+        setTimeout(() => setUploadProgress(0), 500);
       }
     },
     [user, docs]
   );
+
+  const retryFailedUploads = useCallback(async () => {
+    if (!user || user.demo || failedUploadsStore.size === 0) return;
+    
+    const entries = Array.from(failedUploadsStore.entries());
+    for (const [docId, { doc, cipher, retryCount }] of entries) {
+      if (retryCount >= 3) {
+        console.warn(`Max retry attempts reached for ${doc.name}`);
+        continue;
+      }
+      
+      try {
+        const fileId = await uploadToDrive(user, doc.name, cipher, doc.mimeType || 'application/octet-stream');
+        
+        // Update document with real Drive fileId
+        const updatedDoc = { ...doc, fileId };
+        const nextDocs = docs.map((d) => (d.id === docId ? updatedDoc : d));
+        setDocs(nextDocs);
+        await storage.setDocs(nextDocs);
+        
+        // Remove from failed uploads
+        failedUploadsStore.delete(docId);
+        console.log(`Successfully retried upload for ${doc.name}`);
+      } catch (error) {
+        console.warn(`Retry failed for ${doc.name}:`, error);
+        failedUploadsStore.set(docId, { doc, cipher, retryCount: retryCount + 1 });
+      }
+    }
+  }, [user, docs]);
+
+  // Auto-retry failed uploads when network comes back online
+  useEffect(() => {
+    if (isOnline && user && !user.demo && failedUploadsStore.size > 0) {
+      retryFailedUploads();
+    }
+  }, [isOnline, user, retryFailedUploads]);
 
   const updateDoc: VaultCtx['updateDoc'] = useCallback(
     async (id, patch) => {
@@ -295,6 +354,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         drive,
         loading,
         uploading,
+        uploadProgress,
         uploadError,
         addDoc,
         updateDoc,
@@ -306,6 +366,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         removeFamily,
         refreshDrive,
         clearUploadError,
+        retryFailedUploads,
         vaultHealth,
         expiringCount,
       }}

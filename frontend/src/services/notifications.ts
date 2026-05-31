@@ -1,12 +1,13 @@
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import { differenceInSeconds, parseISO, subDays } from 'date-fns';
 
 let configured = false;
 
-export async function initNotifications() {
-  if (configured) return;
+export async function initNotifications(): Promise<boolean> {
+  if (configured) return true;
   configured = true;
+  
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
@@ -16,15 +17,34 @@ export async function initNotifications() {
         shouldShowList: true,
       }),
     });
+    
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('safevault', {
-        name: 'SafeVault',
-        importance: Notifications.AndroidImportance.DEFAULT,
+        name: 'SafeVault Reminders',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: 'default',
       });
     }
-    const perm = await Notifications.getPermissionsAsync();
-    if (!perm.granted) await Notifications.requestPermissionsAsync();
-  } catch {}
+    
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    
+    if (finalStatus !== 'granted') {
+      console.warn('Notification permission not granted');
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.warn('Failed to initialize notifications:', error);
+    return false;
+  }
 }
 
 export async function scheduleReminders(
@@ -37,6 +57,7 @@ export async function scheduleReminders(
   const target = parseISO(dateISO);
   const now = new Date();
   const points: { when: Date; label: string }[] = [];
+  
   if (opts.days30) points.push({ when: subDays(target, 30), label: '30 days left' });
   if (opts.days7) points.push({ when: subDays(target, 7), label: '7 days left' });
   if (opts.days1) points.push({ when: subDays(target, 1), label: 'Tomorrow' });
@@ -44,17 +65,26 @@ export async function scheduleReminders(
   for (const p of points) {
     const secs = differenceInSeconds(p.when, now);
     if (secs <= 0) continue;
+    
     try {
       const nid = await Notifications.scheduleNotificationAsync({
-        content: { title: 'SafeVault Reminder', body: `${title} — ${p.label}`, data: { id } },
+        content: { 
+          title: 'SafeVault Reminder', 
+          body: `${title} — ${p.label}`, 
+          data: { id },
+          sound: 'default',
+        },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
           seconds: secs,
         } as any,
       });
       ids.push(nid);
-    } catch {}
+    } catch (error) {
+      console.warn('Failed to schedule notification:', error);
+    }
   }
+  
   return ids;
 }
 
@@ -62,6 +92,8 @@ export async function cancelAllForId(ids: string[] = []) {
   for (const id of ids) {
     try {
       await Notifications.cancelScheduledNotificationAsync(id);
-    } catch {}
+    } catch (error) {
+      console.warn('Failed to cancel notification:', error);
+    }
   }
 }

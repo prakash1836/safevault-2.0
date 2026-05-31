@@ -13,6 +13,7 @@ import { Card, ProgressBar, SectionHeader, StatusBadge, IconButton } from '../..
 import { PressableScale } from '../../src/components/PressableScale';
 import { SkeletonBox, SkeletonRow, SkeletonHero } from '../../src/components/Skeleton';
 import { EmptyState } from '../../src/components/EmptyState';
+import { OfflineBanner } from '../../src/components/OfflineBanner';
 import { colors, spacing, radius, shadow, typography } from '../../src/constants/theme';
 import { fmtDate, getDocStatus, daysUntil } from '../../src/utils/date';
 import { SUGGESTED_DOCS } from '../../src/constants/categories';
@@ -114,6 +115,7 @@ export default function Home() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
+      <OfflineBanner />
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
