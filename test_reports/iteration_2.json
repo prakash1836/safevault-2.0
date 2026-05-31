@@ -26,7 +26,7 @@
     "Family: family-add-btn opens modal with family-pick-photo + family-input-name + family-input-relation + family-input-dob + family-save-btn. 3 seeded members (You, Maya, Aarav) with family-row-<id> + family-edit-<id> + family-remove-<id>. Clicking Maya row opens member detail modal showing Maya's 1 doc (Life Insurance) with edit pencil",
     "Profile: profile-theme-row, profile-warnings (with enable-notif-btn + connect-drive-btn), counts (0 docs / 0 members on first run, 6/3 with seed)",
     "Theme settings: theme-preview live updates, theme-forest / theme-ocean / theme-royal / theme-sunset / theme-mono presets all work, theme-custom-hex accepts #FF5722 and theme-apply-custom applies it. After picking Sunset Orange, /home vault-health-card immediately renders in brown sunset accent",
-    "Real Google OAuth: clicking login-google-btn opens popup to https://accounts.google.com/v3/signin/identifier with client_id=77525538924-uhotejhlsgir0vtvrt6355spj7p7t6n8.apps.googleusercontent.com, scope including https://www.googleapis.com/auth/drive.file, redirect_uri=https://incremental-refactor.preview.emergentagent.com — OAuth handshake correctly initiated",
+    "Real Google OAuth: clicking login-google-btn opens popup to https://accounts.google.com/v3/signin/identifier with client_id=77525538924-uhotejhlsgir0vtvrt6355spj7p7t6n8.apps.googleusercontent.com, scope including https://www.googleapis.com/auth/drive.file, redirect_uri=https://safevault-audit.preview.emergentagent.com — OAuth handshake correctly initiated",
     "No red error overlay on any flow; zero pageerror events captured during full traversal"
   ],
   "test_report_links": [],
