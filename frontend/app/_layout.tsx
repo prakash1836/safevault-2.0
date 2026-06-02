@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { BiometricGate } from '../src/components/BiometricGate';
+import { NotificationResponseHandler } from '../src/components/NotificationResponseHandler';
 
 export default function RootLayout() {
   return (
@@ -25,6 +26,7 @@ export default function RootLayout() {
                     <VaultProvider>
                       <UploadProvider>
                         <StatusBar style="dark" />
+                        <NotificationResponseHandler />
                         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#FCFCFA' } }}>
                           <Stack.Screen name="index" />
                           <Stack.Screen name="login" />

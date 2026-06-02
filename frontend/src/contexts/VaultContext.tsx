@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import type { VaultDocument, VaultEvent, FamilyMember, DriveUsage } from '../types';
-import { storage } from '../services/storage';
+import { storage, type RetryQueueEntry } from '../services/storage';
 import { useAuth } from './AuthContext';
 import { useNetwork } from './NetworkContext';
 import { getKey, encryptBase64 } from '../services/encryption';
-import { uploadToDrive, deleteFromDrive, fetchDriveQuota, saveEncryptedLocal } from '../services/drive';
+import { uploadToDrive, deleteFromDrive, fetchDriveQuota, saveEncryptedLocal, readEncryptedLocal } from '../services/drive';
 import { scheduleReminders, cancelAllForId, initNotifications } from '../services/notifications';
 import { getDocStatus } from '../utils/date';
 import { addDays } from 'date-fns';
@@ -38,6 +38,40 @@ interface VaultCtx {
 
 const reminderIdsStore = new Map<string, string[]>();
 const failedUploadsStore = new Map<string, { doc: VaultDocument; cipher: string; retryCount: number }>();
+
+/** Sync in-memory failedUploadsStore to AsyncStorage so retries survive app restarts. */
+async function persistRetryQueue() {
+  const entries: RetryQueueEntry[] = Array.from(failedUploadsStore.entries()).map(([docId, { doc, retryCount }]) => ({
+    docId,
+    fileId: doc.fileId || '',
+    name: doc.name,
+    mimeType: doc.mimeType || 'application/octet-stream',
+    retryCount,
+  }));
+  try { await storage.setRetryQueue(entries); } catch (e) { console.warn('Persist retry queue failed:', e); }
+}
+
+/** Restore the retry queue from disk on app startup. Re-reads ciphertext from local files. */
+async function restoreRetryQueue(allDocs: VaultDocument[]) {
+  try {
+    const entries = await storage.getRetryQueue();
+    for (const entry of entries) {
+      const doc = allDocs.find((d) => d.id === entry.docId);
+      if (!doc || !entry.fileId) continue;
+      try {
+        const cipher = await readEncryptedLocal(entry.fileId);
+        if (cipher) {
+          failedUploadsStore.set(entry.docId, { doc, cipher, retryCount: entry.retryCount });
+        }
+      } catch (e) {
+        // Local ciphertext missing — skip and continue
+        console.warn(`Retry queue: ciphertext missing for ${entry.docId}`);
+      }
+    }
+  } catch (e) {
+    console.warn('Restore retry queue failed:', e);
+  }
+}
 
 const VaultContext = createContext<VaultCtx | null>(null);
 
@@ -85,6 +119,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           setDocs(d);
           setEvents(e);
           setFamily(f);
+          // Restore retry queue from disk (survives app restarts)
+          await restoreRetryQueue(d);
         }
         setDrive(dr);
       } catch (e) {
@@ -168,6 +204,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         // Store for retry if upload failed
         if (uploadFailed && !user.demo) {
           failedUploadsStore.set(doc.id, { doc, cipher, retryCount: 0 });
+          await persistRetryQueue();
         }
         
         const next = [doc, ...docs];
@@ -220,10 +257,12 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         
         // Remove from failed uploads
         failedUploadsStore.delete(docId);
+        await persistRetryQueue();
         console.log(`Successfully retried upload for ${doc.name}`);
       } catch (error) {
         console.warn(`Retry failed for ${doc.name}:`, error);
         failedUploadsStore.set(docId, { doc, cipher, retryCount: retryCount + 1 });
+        await persistRetryQueue();
       }
     }
   }, [user, docs]);
@@ -260,6 +299,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       if (nids) {
         await cancelAllForId(nids);
         reminderIdsStore.delete(id);
+      }
+      // Also clean up retry queue entry if present
+      if (failedUploadsStore.has(id)) {
+        failedUploadsStore.delete(id);
+        await persistRetryQueue();
       }
     },
     [user, docs]
