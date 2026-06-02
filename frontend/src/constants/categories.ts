@@ -11,6 +11,18 @@ export const CATEGORIES: { key: DocCategory; label: string; icon: string; color:
   { key: 'Other', label: 'Other', icon: 'FileText', color: '#8A9A93' },
 ];
 
+// Quick lookup for category colors/tints
+export const CATEGORY_META: Record<DocCategory, { color: string; surface: string }> = {
+  Insurance: { color: '#4A7D6A', surface: '#E5EFEA' },
+  ID: { color: '#1C3F3A', surface: '#E0EBE8' },
+  Health: { color: '#D16B54', surface: '#F8E3DC' },
+  Finance: { color: '#DDA750', surface: '#FBF1DE' },
+  Education: { color: '#5C6A64', surface: '#ECEEED' },
+  Property: { color: '#8A9A93', surface: '#EEF2F0' },
+  Vehicle: { color: '#3B6655', surface: '#E5EFEA' },
+  Other: { color: '#8A9A93', surface: '#EEF2F0' },
+};
+
 export const SUGGESTED_DOCS = [
   'Passport',
   'Aadhaar / National ID',

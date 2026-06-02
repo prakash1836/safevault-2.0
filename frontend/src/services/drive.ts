@@ -1,5 +1,7 @@
 // Google Drive service - supports both real API and demo mode
 // In demo mode, "uploads" are stored locally (encrypted) and get a mock fileId.
+// Note: Using expo-file-system/legacy as it's still supported in SDK 54.
+// Migration to new File/Directory API is planned for post-MVP.
 import * as FileSystem from 'expo-file-system/legacy';
 import type { AuthUser, DriveUsage } from '../types';
 

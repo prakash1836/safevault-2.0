@@ -8,7 +8,17 @@ const K = {
   USER: 'safevault.user',
   DRIVE: 'safevault.drive',
   SEEDED: 'safevault.seeded.v1',
+  RETRY_QUEUE: 'safevault.retry.queue.v1',
 };
+
+/** Persisted retry-queue index. Ciphertext lives on disk via saveEncryptedLocal. */
+export interface RetryQueueEntry {
+  docId: string;
+  fileId: string;        // local fake id used as filename for ciphertext
+  name: string;
+  mimeType: string;
+  retryCount: number;
+}
 
 async function getJSON<T>(key: string, fallback: T): Promise<T> {
   const raw = await AsyncStorage.getItem(key);
@@ -49,6 +59,10 @@ export const storage = {
   // Seeded flag
   isSeeded: async (): Promise<boolean> => (await AsyncStorage.getItem(K.SEEDED)) === '1',
   markSeeded: () => AsyncStorage.setItem(K.SEEDED, '1'),
+
+  // Persistent retry queue (survives app restarts)
+  getRetryQueue: (): Promise<RetryQueueEntry[]> => getJSON(K.RETRY_QUEUE, []),
+  setRetryQueue: (q: RetryQueueEntry[]) => setJSON(K.RETRY_QUEUE, q),
 
   // Clear all
   clearAll: async () => {

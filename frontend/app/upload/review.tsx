@@ -1,26 +1,38 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Lock, CheckCircle2 } from 'lucide-react-native';
+import { Lock, CheckCircle2, AlertCircle } from 'lucide-react-native';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { Stepper } from '../../src/components/Stepper';
 import { UploadHeader } from '../../src/components/UploadHeader';
 import { useUpload } from '../../src/contexts/UploadContext';
 import { useVault } from '../../src/contexts/VaultContext';
+import { useTheme } from '../../src/contexts/ThemeContext';
 import { PrimaryButton, Card } from '../../src/components/UI';
-import { colors, radius, spacing } from '../../src/constants/theme';
+import { PressableScale } from '../../src/components/PressableScale';
+import { colors, radius, spacing, typography, shadow } from '../../src/constants/theme';
 import { fmtDate } from '../../src/utils/date';
+import { hapt } from '../../src/utils/haptics';
 
 export default function ReviewStep() {
   const { draft, reset } = useUpload();
-  const { addDoc, family } = useVault();
+  const { addDoc, family, uploading, uploadProgress, uploadError, clearUploadError } = useVault();
+  const t = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const owner = family.find((f) => f.id === draft.ownerId);
 
   const submit = async () => {
-    if (!draft.fileBase64 || !draft.category) return;
+    if (!draft.fileBase64 || !draft.category) {
+      Alert.alert('Missing data', 'Please go back and complete all required fields.');
+      return;
+    }
+    hapt.light();
     setLoading(true);
+    clearUploadError();
+    
     try {
       await addDoc({
         name: draft.name,
@@ -34,57 +46,133 @@ export default function ReviewStep() {
         reminder: draft.reminder,
         fileBase64: draft.fileBase64,
       });
-      reset();
-      router.replace('/(tabs)/docs');
+      
+      hapt.success();
+      setSuccess(true);
+      
+      // Show success briefly, then navigate
+      setTimeout(() => {
+        reset();
+        router.replace('/(tabs)/docs');
+      }, 1200);
+      
     } catch (e: any) {
-      Alert.alert('Upload failed', e.message || 'Please try again');
+      hapt.error();
+      const msg = e?.message || 'Please try again';
+      // If save succeeded locally (network failure), it would not throw. Treat errors as critical.
+      Alert.alert(
+        'Upload failed',
+        msg,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Try Again', onPress: () => submit() },
+        ]
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  // Success state
+  if (success) {
+    return (
+      <SafeAreaView style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]} edges={['top', 'bottom']}>
+        <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: 'center' }}>
+          <View style={[styles.successIcon, { backgroundColor: t.accentSurface }]}>
+            <CheckCircle2 color={t.accent} size={48} strokeWidth={1.6} />
+          </View>
+          <Text style={styles.successTitle}>Encrypted & Saved!</Text>
+          <Text style={styles.successSub}>Your document is now secure in your vault</Text>
+        </Animated.View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <UploadHeader title="Review" />
       <Stepper step={3} />
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.h1}>Almost done</Text>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Animated.View entering={FadeInDown.duration(200)}>
+          <Text style={styles.h1}>Almost done</Text>
+          <Text style={styles.h2}>Review your document details before encrypting</Text>
+        </Animated.View>
 
-        <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={styles.fileIcon}><Lock color={colors.primary} size={22} /></View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{draft.name}</Text>
-            <Text style={styles.sub}>{draft.category} · {(draft.size! / 1024).toFixed(1)} KB</Text>
-          </View>
-        </Card>
+        {/* Error banner */}
+        {uploadError && (
+          <Animated.View entering={FadeInDown.duration(200)} style={styles.errorBanner}>
+            <AlertCircle color={colors.expired} size={18} />
+            <Text style={styles.errorText}>{uploadError}</Text>
+            <PressableScale onPress={clearUploadError} haptic="light">
+              <Text style={[styles.errorDismiss, { color: t.accent }]}>Dismiss</Text>
+            </PressableScale>
+          </Animated.View>
+        )}
 
-        <Card style={{ marginTop: spacing.md }}>
-          <Row label="Owner" value={owner?.name || 'You'} />
-          <Row label="Issued" value={fmtDate(draft.issueDate || undefined)} />
-          <Row label="Expires" value={fmtDate(draft.expiryDate || undefined)} last />
-        </Card>
-
-        <Card style={{ marginTop: spacing.md }}>
-          <Text style={styles.remH}>Reminders</Text>
-          {[
-            ['days30', '30 days before'],
-            ['days7', '7 days before'],
-            ['days1', '1 day before'],
-          ].map(([k, l]) => (
-            <View key={k} style={styles.remRow}>
-              <CheckCircle2 color={draft.reminder[k as keyof typeof draft.reminder] ? colors.primary : colors.border} size={18} />
-              <Text style={[styles.remTxt, !draft.reminder[k as keyof typeof draft.reminder] && { color: colors.textTertiary }]}>{l}</Text>
+        <Animated.View entering={FadeInDown.delay(50).duration(200)}>
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }} variant="elevated">
+            <View style={[styles.fileIcon, { backgroundColor: t.accentSurface }]}>
+              <Lock color={t.accent} size={22} />
             </View>
-          ))}
-        </Card>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.name}>{draft.name || 'Untitled Document'}</Text>
+              <Text style={styles.sub}>{draft.category} · {((draft.size || 0) / 1024).toFixed(1)} KB</Text>
+            </View>
+          </Card>
+        </Animated.View>
 
-        <View style={styles.assurance}>
-          <Lock color={colors.primary} size={14} />
-          <Text style={styles.assText}>Your file will be encrypted with AES‑256 before upload</Text>
-        </View>
+        <Animated.View entering={FadeInDown.delay(100).duration(200)}>
+          <Card style={{ marginTop: spacing.md }} variant="elevated">
+            <Row label="Owner" value={owner?.name || 'You'} />
+            <Row label="Issued" value={fmtDate(draft.issueDate || undefined)} />
+            <Row label="Expires" value={fmtDate(draft.expiryDate || undefined)} last />
+          </Card>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(150).duration(200)}>
+          <Card style={{ marginTop: spacing.md }} variant="elevated">
+            <Text style={styles.remH}>Reminders</Text>
+            {[
+              ['days30', '30 days before'],
+              ['days7', '7 days before'],
+              ['days1', '1 day before'],
+            ].map(([k, l]) => (
+              <View key={k} style={styles.remRow}>
+                <CheckCircle2 color={draft.reminder[k as keyof typeof draft.reminder] ? t.accent : colors.border} size={18} />
+                <Text style={[styles.remTxt, !draft.reminder[k as keyof typeof draft.reminder] && { color: colors.textTertiary }]}>{l}</Text>
+              </View>
+            ))}
+          </Card>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(200).duration(200)} style={[styles.assurance, { backgroundColor: t.accentSurface }]}>
+          <Lock color={t.accent} size={14} />
+          <Text style={[styles.assText, { color: t.accent }]}>Your file will be encrypted with AES‑256 before upload</Text>
+        </Animated.View>
       </ScrollView>
+      
       <View style={styles.footer}>
-        <PrimaryButton title="Encrypt & Save" loading={loading} onPress={submit} testID="review-submit-btn" variant="dark" />
+        {uploading && uploadProgress > 0 && (
+          <View style={styles.progressContainer} testID="upload-progress">
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${uploadProgress}%`, backgroundColor: t.accent }]} />
+            </View>
+            <Text style={styles.progressText}>
+              {uploadProgress < 25 ? 'Preparing...' :
+               uploadProgress < 50 ? 'Encrypting...' :
+               uploadProgress < 75 ? 'Uploading...' :
+               uploadProgress < 100 ? 'Finalizing...' : 'Done!'}
+            </Text>
+          </View>
+        )}
+        <PrimaryButton 
+          title={loading ? "Encrypting..." : "Encrypt & Save"} 
+          loading={loading || uploading} 
+          onPress={submit} 
+          testID="review-submit-btn" 
+          variant="dark"
+          disabled={!draft.fileBase64 || !draft.category}
+        />
       </View>
     </SafeAreaView>
   );
@@ -101,22 +189,46 @@ function Row({ label, value, last }: { label: string; value: string; last?: bool
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  close: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.elevated, alignItems: 'center', justifyContent: 'center' },
-  topTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
   scroll: { paddingHorizontal: spacing.xxl, paddingBottom: spacing.xl },
-  h1: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, marginBottom: spacing.lg },
-  fileIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: colors.primarySurface, alignItems: 'center', justifyContent: 'center' },
-  name: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  sub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10 },
+  h1: { ...typography.h1, color: colors.textPrimary, marginBottom: 4 },
+  h2: { ...typography.bodySm, color: colors.textSecondary, marginBottom: spacing.lg },
+  
+  // Error banner
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.expiredSurface, borderRadius: radius.lg, marginBottom: spacing.md },
+  errorText: { flex: 1, ...typography.bodySm, color: colors.textPrimary, fontWeight: '600' },
+  errorDismiss: { ...typography.bodySm, fontWeight: '700' },
+  
+  // File preview
+  fileIcon: { width: 52, height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  name: { ...typography.h3, color: colors.textPrimary },
+  sub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  
+  // Details row
+  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12 },
   rowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  rowL: { fontSize: 13, color: colors.textSecondary },
-  rowV: { fontSize: 13, color: colors.textPrimary, fontWeight: '700' },
-  remH: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, marginBottom: 8 },
-  remRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-  remTxt: { fontSize: 13, color: colors.textPrimary, fontWeight: '500' },
-  assurance: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, borderRadius: radius.lg, backgroundColor: colors.primarySurface, marginTop: spacing.md },
-  assText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+  rowL: { ...typography.bodySm, color: colors.textSecondary },
+  rowV: { ...typography.bodySm, color: colors.textPrimary, fontWeight: '700' },
+  
+  // Reminders
+  remH: { ...typography.bodySm, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
+  remRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 },
+  remTxt: { ...typography.body, color: colors.textPrimary, fontWeight: '500' },
+  
+  // Assurance
+  assurance: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: spacing.md, borderRadius: radius.lg, marginTop: spacing.md },
+  assText: { ...typography.caption, fontWeight: '600' },
+  
+  // Footer
   footer: { padding: spacing.xxl, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+  
+  // Upload progress
+  progressContainer: { marginBottom: spacing.md },
+  progressBar: { height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 3 },
+  progressText: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'center', fontWeight: '600' },
+  
+  // Success state
+  successIcon: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
+  successTitle: { ...typography.h1, color: colors.textPrimary, textAlign: 'center' },
+  successSub: { ...typography.body, color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center' },
 });

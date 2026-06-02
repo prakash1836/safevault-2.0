@@ -36,6 +36,8 @@ export interface VaultDocument {
   expiryDate?: string;
   notes?: string;
   reminder: DocReminder;
+  /** True when the file is queued for retry — exists only locally, Drive upload failed */
+  syncPending?: boolean;
   createdAt: string;
   updatedAt: string;
 }

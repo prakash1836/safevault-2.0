@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import type { VaultDocument, VaultEvent, FamilyMember, DriveUsage } from '../types';
-import { storage } from '../services/storage';
+import { storage, type RetryQueueEntry } from '../services/storage';
 import { useAuth } from './AuthContext';
+import { useNetwork } from './NetworkContext';
 import { getKey, encryptBase64 } from '../services/encryption';
-import { uploadToDrive, deleteFromDrive, fetchDriveQuota } from '../services/drive';
+import { uploadToDrive, deleteFromDrive, fetchDriveQuota, saveEncryptedLocal, readEncryptedLocal } from '../services/drive';
 import { scheduleReminders, cancelAllForId, initNotifications } from '../services/notifications';
 import { getDocStatus } from '../utils/date';
 import { addDays } from 'date-fns';
@@ -14,6 +15,9 @@ interface VaultCtx {
   family: FamilyMember[];
   drive: DriveUsage;
   loading: boolean;
+  uploading: boolean;
+  uploadProgress: number;
+  uploadError: string | null;
   addDoc: (
     input: Omit<VaultDocument, 'id' | 'createdAt' | 'updatedAt' | 'encrypted' | 'fileId'> & { fileBase64: string }
   ) => Promise<VaultDocument>;
@@ -25,56 +29,109 @@ interface VaultCtx {
   updateFamily: (id: string, patch: Partial<FamilyMember>) => Promise<void>;
   removeFamily: (id: string) => Promise<void>;
   refreshDrive: () => Promise<void>;
+  clearUploadError: () => void;
+  retryFailedUploads: () => Promise<void>;
   vaultHealth: number;
   expiringCount: number;
+  pendingSyncCount: number;
 }
 
 const reminderIdsStore = new Map<string, string[]>();
+const failedUploadsStore = new Map<string, { doc: VaultDocument; cipher: string; retryCount: number }>();
+
+/** Sync in-memory failedUploadsStore to AsyncStorage so retries survive app restarts. */
+async function persistRetryQueue() {
+  const entries: RetryQueueEntry[] = Array.from(failedUploadsStore.entries()).map(([docId, { doc, retryCount }]) => ({
+    docId,
+    fileId: doc.fileId || '',
+    name: doc.name,
+    mimeType: doc.mimeType || 'application/octet-stream',
+    retryCount,
+  }));
+  try { await storage.setRetryQueue(entries); } catch (e) { console.warn('Persist retry queue failed:', e); }
+}
+
+/** Restore the retry queue from disk on app startup. Re-reads ciphertext from local files. */
+async function restoreRetryQueue(allDocs: VaultDocument[]) {
+  try {
+    const entries = await storage.getRetryQueue();
+    for (const entry of entries) {
+      const doc = allDocs.find((d) => d.id === entry.docId);
+      if (!doc || !entry.fileId) continue;
+      try {
+        const cipher = await readEncryptedLocal(entry.fileId);
+        if (cipher) {
+          failedUploadsStore.set(entry.docId, { doc, cipher, retryCount: entry.retryCount });
+        }
+      } catch (e) {
+        // Local ciphertext missing — skip and continue
+        console.warn(`Retry queue: ciphertext missing for ${entry.docId}`);
+      }
+    }
+  } catch (e) {
+    console.warn('Restore retry queue failed:', e);
+  }
+}
 
 const VaultContext = createContext<VaultCtx | null>(null);
 
 export function VaultProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const { isOnline } = useNetwork();
   const [docs, setDocs] = useState<VaultDocument[]>([]);
   const [events, setEvents] = useState<VaultEvent[]>([]);
   const [family, setFamily] = useState<FamilyMember[]>([]);
   const [drive, setDrive] = useState<DriveUsage>({ total: 15 * 1024 * 1024 * 1024, used: 0, vault: 0 });
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
+      // Clear in-memory caches on logout
+      failedUploadsStore.clear();
+      reminderIdsStore.clear();
       setDocs([]);
       setEvents([]);
       setFamily([]);
+      setDrive({ total: 15 * 1024 * 1024 * 1024, used: 0, vault: 0 });
       setLoading(false);
       return;
     }
     (async () => {
       setLoading(true);
-      await initNotifications();
-      const [d, e, f, dr, seeded] = await Promise.all([
-        storage.getDocs(),
-        storage.getEvents(),
-        storage.getFamily(),
-        storage.getDrive(),
-        storage.isSeeded(),
-      ]);
-      if (!seeded) {
-        const seed = buildSeed();
-        setDocs(seed.docs);
-        setEvents(seed.events);
-        setFamily(seed.family);
-        await storage.setDocs(seed.docs);
-        await storage.setEvents(seed.events);
-        await storage.setFamily(seed.family);
-        await storage.markSeeded();
-      } else {
-        setDocs(d);
-        setEvents(e);
-        setFamily(f);
+      try {
+        await initNotifications();
+        const [d, e, f, dr, seeded] = await Promise.all([
+          storage.getDocs(),
+          storage.getEvents(),
+          storage.getFamily(),
+          storage.getDrive(),
+          storage.isSeeded(),
+        ]);
+        if (!seeded) {
+          const seed = buildSeed();
+          setDocs(seed.docs);
+          setEvents(seed.events);
+          setFamily(seed.family);
+          await storage.setDocs(seed.docs);
+          await storage.setEvents(seed.events);
+          await storage.setFamily(seed.family);
+          await storage.markSeeded();
+        } else {
+          setDocs(d);
+          setEvents(e);
+          setFamily(f);
+          // Restore retry queue from disk (survives app restarts)
+          await restoreRetryQueue(d);
+        }
+        setDrive(dr);
+      } catch (e) {
+        console.warn('Failed to load vault data:', e);
+      } finally {
+        setLoading(false);
       }
-      setDrive(dr);
-      setLoading(false);
       // Try refresh quota in background
       try {
         const q = await fetchDriveQuota(user);
@@ -84,43 +141,142 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [user]);
 
+  const clearUploadError = useCallback(() => setUploadError(null), []);
+
   const addDoc: VaultCtx['addDoc'] = useCallback(
     async (input) => {
       if (!user) throw new Error('Not logged in');
-      const key = await getKey();
-      if (!key) throw new Error('Missing encryption key');
-      const cipher = encryptBase64(input.fileBase64, key);
-      const fileId = await uploadToDrive(user, input.name, cipher, input.mimeType || 'application/octet-stream');
-      const now = new Date().toISOString();
-      const id = 'doc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      const doc: VaultDocument = {
-        id,
-        name: input.name,
-        category: input.category,
-        ownerId: input.ownerId,
-        fileId,
-        localUri: user.demo ? fileId : null,
-        mimeType: input.mimeType,
-        size: input.size,
-        encrypted: true,
-        issueDate: input.issueDate,
-        expiryDate: input.expiryDate,
-        notes: input.notes,
-        reminder: input.reminder,
-        createdAt: now,
-        updatedAt: now,
-      };
-      const next = [doc, ...docs];
-      setDocs(next);
-      await storage.setDocs(next);
-      if (doc.expiryDate) {
-        const ids = await scheduleReminders(doc.id, doc.name, doc.expiryDate, doc.reminder);
-        reminderIdsStore.set(doc.id, ids);
+      setUploading(true);
+      setUploadProgress(0);
+      setUploadError(null);
+      
+      try {
+        const key = await getKey();
+        if (!key) throw new Error('Missing encryption key. Please log out and log in again.');
+        
+        // Encrypt the file (25% progress)
+        setUploadProgress(25);
+        const cipher = encryptBase64(input.fileBase64, key);
+        
+        // Upload to Drive or save locally (50% progress)
+        setUploadProgress(50);
+        let fileId: string;
+        let localUri: string | null = null;
+        let uploadFailed = false;
+        
+        try {
+          fileId = await uploadToDrive(user, input.name, cipher, input.mimeType || 'application/octet-stream');
+          setUploadProgress(75);
+          
+          // For demo mode, fileId is the local file ID
+          if (user.demo || fileId.startsWith('demo_')) {
+            localUri = `${fileId}`;
+          }
+        } catch (uploadErr: any) {
+          console.warn('Drive upload failed, saving locally:', uploadErr);
+          uploadFailed = true;
+          
+          // Fallback to local storage
+          const fakeId = 'local_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+          await saveEncryptedLocal(fakeId, cipher);
+          fileId = fakeId;
+          localUri = fakeId;
+          setUploadProgress(75);
+        }
+        
+        const now = new Date().toISOString();
+        const id = 'doc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const doc: VaultDocument = {
+          id,
+          name: input.name,
+          category: input.category,
+          ownerId: input.ownerId,
+          fileId,
+          localUri,
+          mimeType: input.mimeType,
+          size: input.size,
+          encrypted: true,
+          issueDate: input.issueDate,
+          expiryDate: input.expiryDate,
+          notes: input.notes,
+          reminder: input.reminder,
+          syncPending: uploadFailed && !user.demo,
+          createdAt: now,
+          updatedAt: now,
+        };
+        
+        // Store for retry if upload failed
+        if (uploadFailed && !user.demo) {
+          failedUploadsStore.set(doc.id, { doc, cipher, retryCount: 0 });
+          await persistRetryQueue();
+        }
+        
+        const next = [doc, ...docs];
+        setDocs(next);
+        await storage.setDocs(next);
+        setUploadProgress(90);
+        
+        // Schedule reminders
+        if (doc.expiryDate) {
+          try {
+            const ids = await scheduleReminders(doc.id, doc.name, doc.expiryDate, doc.reminder);
+            reminderIdsStore.set(doc.id, ids);
+          } catch (e) {
+            console.warn('Failed to schedule reminders:', e);
+          }
+        }
+        
+        setUploadProgress(100);
+        return doc;
+      } catch (e: any) {
+        const msg = e?.message || 'Upload failed';
+        setUploadError(msg);
+        throw new Error(msg);
+      } finally {
+        setUploading(false);
+        setTimeout(() => setUploadProgress(0), 500);
       }
-      return doc;
     },
     [user, docs]
   );
+
+  const retryFailedUploads = useCallback(async () => {
+    if (!user || user.demo || failedUploadsStore.size === 0) return;
+    
+    const entries = Array.from(failedUploadsStore.entries());
+    for (const [docId, { doc, cipher, retryCount }] of entries) {
+      if (retryCount >= 3) {
+        console.warn(`Max retry attempts reached for ${doc.name}`);
+        continue;
+      }
+      
+      try {
+        const fileId = await uploadToDrive(user, doc.name, cipher, doc.mimeType || 'application/octet-stream');
+        
+        // Update document with real Drive fileId, clear sync-pending flag
+        const updatedDoc = { ...doc, fileId, syncPending: false };
+        const nextDocs = docs.map((d) => (d.id === docId ? updatedDoc : d));
+        setDocs(nextDocs);
+        await storage.setDocs(nextDocs);
+        
+        // Remove from failed uploads
+        failedUploadsStore.delete(docId);
+        await persistRetryQueue();
+        console.log(`Successfully retried upload for ${doc.name}`);
+      } catch (error) {
+        console.warn(`Retry failed for ${doc.name}:`, error);
+        failedUploadsStore.set(docId, { doc, cipher, retryCount: retryCount + 1 });
+        await persistRetryQueue();
+      }
+    }
+  }, [user, docs]);
+
+  // Auto-retry failed uploads when network comes back online
+  useEffect(() => {
+    if (isOnline && user && !user.demo && failedUploadsStore.size > 0) {
+      retryFailedUploads();
+    }
+  }, [isOnline, user, retryFailedUploads]);
 
   const updateDoc: VaultCtx['updateDoc'] = useCallback(
     async (id, patch) => {
@@ -147,6 +303,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       if (nids) {
         await cancelAllForId(nids);
         reminderIdsStore.delete(id);
+      }
+      // Also clean up retry queue entry if present
+      if (failedUploadsStore.has(id)) {
+        failedUploadsStore.delete(id);
+        await persistRetryQueue();
       }
     },
     [user, docs]
@@ -234,6 +395,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     [docs]
   );
 
+  const pendingSyncCount = useMemo(
+    () => docs.filter((d) => d.syncPending).length,
+    [docs]
+  );
+
   return (
     <VaultContext.Provider
       value={{
@@ -242,6 +408,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         family,
         drive,
         loading,
+        uploading,
+        uploadProgress,
+        uploadError,
         addDoc,
         updateDoc,
         deleteDoc,
@@ -251,8 +420,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         updateFamily,
         removeFamily,
         refreshDrive,
+        clearUploadError,
+        retryFailedUploads,
         vaultHealth,
         expiringCount,
+        pendingSyncCount,
       }}
     >
       {children}
