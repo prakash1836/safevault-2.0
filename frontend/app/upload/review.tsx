@@ -58,7 +58,16 @@ export default function ReviewStep() {
       
     } catch (e: any) {
       hapt.error();
-      Alert.alert('Upload failed', e.message || 'Please try again');
+      const msg = e?.message || 'Please try again';
+      // If save succeeded locally (network failure), it would not throw. Treat errors as critical.
+      Alert.alert(
+        'Upload failed',
+        msg,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Try Again', onPress: () => submit() },
+        ]
+      );
     } finally {
       setLoading(false);
     }

@@ -14,6 +14,7 @@ import { PressableScale } from '../../src/components/PressableScale';
 import { SkeletonBox, SkeletonRow, SkeletonHero } from '../../src/components/Skeleton';
 import { EmptyState } from '../../src/components/EmptyState';
 import { OfflineBanner } from '../../src/components/OfflineBanner';
+import { SyncStatusBanner } from '../../src/components/SyncStatusBanner';
 import { colors, spacing, radius, shadow, typography } from '../../src/constants/theme';
 import { fmtDate, getDocStatus, daysUntil } from '../../src/utils/date';
 import { SUGGESTED_DOCS } from '../../src/constants/categories';
@@ -146,6 +147,9 @@ export default function Home() {
             <Bell color={colors.textPrimary} size={20} strokeWidth={1.6} />
           </IconButton>
         </Animated.View>
+
+        {/* Sync status banner (only shows when there are pending syncs) */}
+        <SyncStatusBanner />
 
         {/* Premium Vault Health Card with Ring */}
         <Animated.View entering={FadeInDown.delay(100).duration(350)} style={[styles.healthCard, { backgroundColor: t.accentDark }]} testID="vault-health-card">

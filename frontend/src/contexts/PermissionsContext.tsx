@@ -2,7 +2,9 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as MediaLibrary from 'expo-media-library';
-import { Platform } from 'react-native';
+import * as Linking from 'expo-linking';
+import { Platform, Alert } from 'react-native';
+import { initNotifications } from '../services/notifications';
 
 export interface Permissions {
   notifications: boolean;
@@ -63,10 +65,22 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
 
   const requestNotifications = useCallback(async () => {
     try {
+      // Initialize notification channel and handler first (idempotent)
+      await initNotifications();
       const r = await Notifications.requestPermissionsAsync();
       const ok = !!r.granted;
       setState((s) => ({ ...s, notifications: ok }));
-      // NOTE: Just update state, do NOT auto-navigate
+      // If permanently denied on Android, offer to open settings
+      if (!ok && Platform.OS === 'android' && r.canAskAgain === false) {
+        Alert.alert(
+          'Notifications blocked',
+          'Reminders need notification permission. Please enable it in Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+      }
       return ok;
     } catch (e) { 
       console.warn('Notification permission request failed:', e);
@@ -80,7 +94,17 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       const r = await MediaLibrary.requestPermissionsAsync();
       const ok = !!r.granted;
       setState((s) => ({ ...s, media: ok }));
-      // NOTE: Just update state, do NOT auto-navigate
+      // If permanently denied on Android, offer to open settings
+      if (!ok && Platform.OS === 'android' && r.canAskAgain === false) {
+        Alert.alert(
+          'Photo access blocked',
+          'To upload images, please allow Photos & Media access in Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+      }
       return ok;
     } catch (e) { 
       console.warn('Media permission request failed:', e);

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TextInput, FlatList, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Search, FileText, Lock, Calendar as CalIcon, Filter as FilterIcon, X } from 'lucide-react-native';
+import { Search, FileText, Lock, Calendar as CalIcon, Filter as FilterIcon, X, CloudOff } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useVault } from '../../src/contexts/VaultContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -70,7 +70,12 @@ export default function Docs() {
               <Lock color={catMeta.color} size={18} strokeWidth={1.6} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.docName} numberOfLines={1}>{item.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.docName, { flexShrink: 1 }]} numberOfLines={1}>{item.name}</Text>
+                {item.syncPending && (
+                  <CloudOff color={colors.expiringSoon} size={12} strokeWidth={2.5} testID={`doc-sync-pending-${item.id}`} />
+                )}
+              </View>
               <Text style={styles.docSub}>{item.category} · {owner?.name || 'You'}</Text>
               {item.expiryDate && (
                 <Text style={[styles.docDate, status === 'expired' && { color: colors.expired }]}>

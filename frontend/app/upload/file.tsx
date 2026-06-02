@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { UploadCloud, ImageIcon, FileText, Lock, Repeat, FileSpreadsheet } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Linking from 'expo-linking';
 import { Stepper } from '../../src/components/Stepper';
 import { UploadHeader } from '../../src/components/UploadHeader';
 import { useUpload } from '../../src/contexts/UploadContext';
@@ -13,11 +14,26 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import { PrimaryButton } from '../../src/components/UI';
 import { colors, radius, spacing } from '../../src/constants/theme';
 
+// Maximum file size (50 MB) — beyond this base64 encoding may OOM on low-RAM devices
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
+
 export default function FileStep() {
   const { draft, setDraft } = useUpload();
   const t = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+
+  const validateSize = (size: number, name: string): boolean => {
+    if (size > MAX_FILE_BYTES) {
+      Alert.alert(
+        'File too large',
+        `"${name}" is ${(size / (1024 * 1024)).toFixed(1)} MB. The maximum supported size is 50 MB to keep encryption fast on mobile devices.`,
+        [{ text: 'OK' }]
+      );
+      return false;
+    }
+    return true;
+  };
 
   const pickAnyFile = async () => {
     setLoading(true);
@@ -25,16 +41,20 @@ export default function FileStep() {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (res.canceled) return;
       const a = res.assets[0];
+      if (a.size && !validateSize(a.size, a.name)) return;
       const b64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
+      // Re-check after read in case size was not provided
+      const finalSize = a.size || b64.length;
+      if (!validateSize(finalSize, a.name)) return;
       setDraft({
         fileBase64: b64,
         fileName: a.name,
         mimeType: a.mimeType || guessMime(a.name),
-        size: a.size || b64.length,
+        size: finalSize,
         name: draft.name || a.name.replace(/\.[^.]+$/, ''),
       });
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Could not read file');
+      Alert.alert('Could not read file', e?.message || 'Please try a different file.', [{ text: 'OK' }]);
     } finally { setLoading(false); }
   };
 
@@ -42,22 +62,39 @@ export default function FileStep() {
     setLoading(true);
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) { Alert.alert('Permission needed', 'Enable photo library access in settings to upload images.'); return; }
+      if (!perm.granted) {
+        if (Platform.OS === 'android' && perm.canAskAgain === false) {
+          Alert.alert(
+            'Photo access blocked',
+            'Enable Photos & Media in Settings to upload images.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]
+          );
+        } else {
+          Alert.alert('Permission needed', 'Allow photo library access to upload images.');
+        }
+        return;
+      }
       const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.85 });
       if (res.canceled) return;
       const a = res.assets[0];
+      if (a.fileSize && !validateSize(a.fileSize, a.fileName || 'image')) return;
       const b64 = a.base64 || (await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 }));
+      const finalSize = a.fileSize || b64.length;
+      if (!validateSize(finalSize, a.fileName || 'image')) return;
       const isPng = (a.mimeType || '').includes('png');
       const nm = (a.fileName || `image_${Date.now()}`) + (isPng ? '.png' : '.jpg');
       setDraft({
         fileBase64: b64,
         fileName: nm,
         mimeType: a.mimeType || 'image/jpeg',
-        size: a.fileSize || b64.length,
+        size: finalSize,
         name: draft.name || nm.replace(/\.[^.]+$/, ''),
       });
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Could not read image');
+      Alert.alert('Could not read image', e?.message || 'Please try a different image.', [{ text: 'OK' }]);
     } finally { setLoading(false); }
   };
 

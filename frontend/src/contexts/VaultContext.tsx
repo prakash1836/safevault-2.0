@@ -33,6 +33,7 @@ interface VaultCtx {
   retryFailedUploads: () => Promise<void>;
   vaultHealth: number;
   expiringCount: number;
+  pendingSyncCount: number;
 }
 
 const reminderIdsStore = new Map<string, string[]>();
@@ -159,6 +160,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           expiryDate: input.expiryDate,
           notes: input.notes,
           reminder: input.reminder,
+          syncPending: uploadFailed && !user.demo,
           createdAt: now,
           updatedAt: now,
         };
@@ -210,8 +212,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       try {
         const fileId = await uploadToDrive(user, doc.name, cipher, doc.mimeType || 'application/octet-stream');
         
-        // Update document with real Drive fileId
-        const updatedDoc = { ...doc, fileId };
+        // Update document with real Drive fileId, clear sync-pending flag
+        const updatedDoc = { ...doc, fileId, syncPending: false };
         const nextDocs = docs.map((d) => (d.id === docId ? updatedDoc : d));
         setDocs(nextDocs);
         await storage.setDocs(nextDocs);
@@ -345,6 +347,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     [docs]
   );
 
+  const pendingSyncCount = useMemo(
+    () => docs.filter((d) => d.syncPending).length,
+    [docs]
+  );
+
   return (
     <VaultContext.Provider
       value={{
@@ -369,6 +376,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         retryFailedUploads,
         vaultHealth,
         expiringCount,
+        pendingSyncCount,
       }}
     >
       {children}
