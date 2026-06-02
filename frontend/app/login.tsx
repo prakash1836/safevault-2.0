@@ -20,7 +20,15 @@ export default function Login() {
     setLoading(null);
     if (!r.ok) {
       if (r.reason === 'cancelled') return;
-      Alert.alert('Sign-in failed', 'We could not connect to Google. Try demo mode or check your network.');
+      Alert.alert(
+        'Sign-in failed',
+        'We could not connect to Google. Check your network or try demo mode.',
+        [
+          { text: 'Try Demo', onPress: onDemo },
+          { text: 'Retry Google', onPress: onGoogle, style: 'default' },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
     }
   };
   const onDemo = async () => {
