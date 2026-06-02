@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TextInput, FlatList, Pressable } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, ScrollView, StyleSheet, TextInput, FlatList, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Search, FileText, Lock, Calendar as CalIcon, Filter as FilterIcon, X, CloudOff } from 'lucide-react-native';
@@ -20,13 +20,24 @@ import { CATEGORY_META } from '../../src/constants/categories';
 type GroupBy = 'list' | 'month';
 
 export default function Docs() {
-  const { docs, family, loading } = useVault();
+  const { docs, family, loading, refreshDrive } = useVault();
   const t = useTheme();
   const router = useRouter();
   const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
   const [filterOpen, setFilterOpen] = useState(false);
   const [q, setQ] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('list');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    hapt.light();
+    try {
+      await refreshDrive();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshDrive]);
 
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
@@ -190,9 +201,28 @@ export default function Docs() {
           windowSize={10}
           initialNumToRender={8}
           updateCellsBatchingPeriod={50}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={t.accent}
+              colors={[t.accent]}
+            />
+          }
         />
       ) : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.xxl, paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: spacing.xxl, paddingBottom: 140 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={t.accent}
+              colors={[t.accent]}
+            />
+          }
+        >
           {Object.entries(grouped!).map(([month, items]) => (
             <View key={month} style={{ marginBottom: spacing.xl }}>
               <Text style={styles.monthHead}>{month}</Text>

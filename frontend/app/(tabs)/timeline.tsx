@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Image } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, ScrollView, StyleSheet, Image, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Calendar, Cake, Stethoscope, FileText, AlertCircle, Clock, ChevronRight } from 'lucide-react-native';
@@ -19,11 +19,22 @@ type ViewMode = 'all' | 'month' | 'year';
 type Item = { id: string; title: string; date: string; kind: 'doc' | 'birthday' | 'appointment' | 'custom'; sub?: string; ownerId?: string; docId?: string };
 
 export default function Timeline() {
-  const { docs, events, family, loading } = useVault();
+  const { docs, events, family, loading, refreshDrive } = useVault();
   const t = useTheme();
   const router = useRouter();
   const [view, setView] = useState<ViewMode>('all');
   const [memberFilter, setMemberFilter] = useState<string | 'all'>('all');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    hapt.light();
+    try {
+      await refreshDrive();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshDrive]);
 
   const items: Item[] = useMemo(() => {
     const out: Item[] = [];
@@ -131,7 +142,18 @@ export default function Timeline() {
         </ScrollView>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={t.accent}
+            colors={[t.accent]}
+          />
+        }
+      >
         {orderedKeys.length === 0 ? (
           <EmptyState
             icon={<Calendar color={t.accent} size={32} />}

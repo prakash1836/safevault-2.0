@@ -47,6 +47,32 @@ export async function initNotifications(): Promise<boolean> {
   }
 }
 
+/**
+ * Send a test notification in ~5 seconds to verify the channel + permissions work on the device.
+ * Useful for real-device QA.
+ */
+export async function sendTestNotification(): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const ready = await initNotifications();
+    if (!ready) return { ok: false, reason: 'Permission not granted' };
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'SafeVault Test Reminder',
+        body: 'If you see this, reminders work on your device 🎉',
+        sound: 'default',
+        data: { test: true },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 5,
+      } as any,
+    });
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, reason: e?.message || 'unknown error' };
+  }
+}
+
 export async function scheduleReminders(
   id: string,
   title: string,
@@ -95,5 +121,18 @@ export async function cancelAllForId(ids: string[] = []) {
     } catch (error) {
       console.warn('Failed to cancel notification:', error);
     }
+  }
+}
+
+/**
+ * Get count of all currently scheduled SafeVault notifications.
+ * Useful for diagnostic display in profile/settings.
+ */
+export async function getScheduledCount(): Promise<number> {
+  try {
+    const list = await Notifications.getAllScheduledNotificationsAsync();
+    return list.length;
+  } catch {
+    return 0;
   }
 }

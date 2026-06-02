@@ -12,6 +12,7 @@ import { colors, spacing, radius, shadow, typography } from '../../src/constants
 import { Card, PrimaryButton } from '../../src/components/UI';
 import { PressableScale } from '../../src/components/PressableScale';
 import { biometric } from '../../src/services/biometric';
+import { sendTestNotification, getScheduledCount } from '../../src/services/notifications';
 import { hapt } from '../../src/utils/haptics';
 
 export default function Profile() {
@@ -156,7 +157,28 @@ export default function Profile() {
           <RowItem icon={<Palette color={t.accent} size={18} strokeWidth={1.6} />} label="Theme" value={presetName} onPress={() => router.push('/settings/theme')} testID="profile-theme-row" accent={t.accentSurface} />
           <RowItem icon={<Users color={t.accent} size={18} strokeWidth={1.6} />} label="Family Members" onPress={() => router.push('/family')} testID="profile-family-row" accent={t.accentSurface} />
           <RowItem icon={<Cloud color={t.accent} size={18} strokeWidth={1.6} />} label={drive ? 'Google Drive · Connected' : 'Connect Google Drive'} onPress={() => router.replace('/onboarding')} testID="profile-drive-row" accent={t.accentSurface} />
-          <RowItem icon={<Bell color={t.accent} size={18} strokeWidth={1.6} />} label="Reminder preferences" onPress={() => Alert.alert('Reminders', 'Each document can have 30‑day, 7‑day and 1‑day reminders. Configure per document.')} testID="profile-reminders-row" accent={t.accentSurface} />
+          <RowItem icon={<Bell color={t.accent} size={18} strokeWidth={1.6} />} label="Reminder preferences" onPress={async () => {
+            const count = await getScheduledCount();
+            Alert.alert(
+              'Reminders',
+              `Each document can have 30, 7 and 1-day expiry reminders.\n\n${count} reminder${count === 1 ? '' : 's'} currently scheduled.`,
+              [
+                { text: 'OK' },
+                {
+                  text: 'Send Test',
+                  onPress: async () => {
+                    hapt.light();
+                    const r = await sendTestNotification();
+                    if (r.ok) {
+                      Alert.alert('Test sent', 'You should receive a notification in 5 seconds.');
+                    } else {
+                      Alert.alert('Test failed', r.reason || 'Notification permission not granted.');
+                    }
+                  },
+                },
+              ]
+            );
+          }} testID="profile-reminders-row" accent={t.accentSurface} />
           {biometricAvailable && (
             <View style={[styles.row, { borderBottomWidth: 1, borderBottomColor: colors.border }]} testID="profile-biometric-row">
               <View style={[styles.rowIcon, { backgroundColor: t.accentSurface }]}>
