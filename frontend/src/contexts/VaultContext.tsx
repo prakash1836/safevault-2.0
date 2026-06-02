@@ -89,9 +89,13 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user) {
+      // Clear in-memory caches on logout
+      failedUploadsStore.clear();
+      reminderIdsStore.clear();
       setDocs([]);
       setEvents([]);
       setFamily([]);
+      setDrive({ total: 15 * 1024 * 1024 * 1024, used: 0, vault: 0 });
       setLoading(false);
       return;
     }

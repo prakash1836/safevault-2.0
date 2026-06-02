@@ -150,8 +150,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     try {
       setLoading(true);
+      // Cancel all scheduled SafeVault reminders
+      try {
+        const Notifications = await import('expo-notifications');
+        await Notifications.cancelAllScheduledNotificationsAsync();
+      } catch {}
+      // Clear encryption key and OAuth token first
       await clearKey();
       await secureStore.del(TOKEN_KEY);
+      // Wipe ALL local vault data (docs, events, family, drive, retry queue, seeded flag)
+      await storage.clearAll();
+      // Finally clear session
       await storage.setUser(null);
       setUser(null);
       setError(null);
