@@ -3,11 +3,10 @@ import type { AuthUser } from '../types';
 import { storage } from '../services/storage';
 import { fetchUserInfo, buildDemoUser, GOOGLE_SCOPES } from '../services/auth';
 import { deriveAndStoreKey, clearKey, secureStore } from '../services/encryption';
-import * as AuthSession from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
-
-WebBrowser.maybeCompleteAuthSession();
+import {
+  GoogleSignin,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 
 interface AuthCtx {
   user: AuthUser | null;
@@ -29,20 +28,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
-  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-  const hasGoogleConfig = !!webClientId;
+const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
-  // Configure Google AuthRequest hook (no backend, implicit token flow with drive.file scope)
-  // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-  const [, response, promptAsync] = Google.useAuthRequest({
+const hasGoogleConfig = !!webClientId;
+
+useEffect(() => {
+  GoogleSignin.configure({
     webClientId,
-    androidClientId,
-    iosClientId,
+    offlineAccess: false,
     scopes: GOOGLE_SCOPES,
-    selectAccount: true,
   });
+}, []);
 
   // Load saved user session on app start
   useEffect(() => {
@@ -69,42 +65,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Handle redirect/response from Google auth
-  useEffect(() => {
-    (async () => {
-      if (response?.type === 'success') {
-        const accessToken = (response as any).authentication?.accessToken || (response as any).params?.access_token;
-        if (!accessToken) {
-          setError('No access token received');
-          return;
-        }
-        try {
-          setLoading(true);
-          const info = await fetchUserInfo(accessToken);
-          const u: AuthUser = {
-            id: info.sub,
-            email: info.email,
-            name: info.name,
-            picture: info.picture,
-            accessToken,
-            demo: false,
-          };
-          await secureStore.set(TOKEN_KEY, accessToken);
-          await deriveAndStoreKey(u.id);
-          await storage.setUser(u);
-          setUser(u);
-          setError(null);
-        } catch (e: any) {
-          console.warn('Google login post-step failed', e);
-          setError(e?.message || 'Login failed');
-        } finally {
-          setLoading(false);
-        }
-      } else if (response?.type === 'error') {
-        setError(response.error?.message || 'Authentication error');
-      }
-    })();
-  }, [response]);
 
   const loginDemo = useCallback(async () => {
     try {
@@ -121,30 +81,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const loginGoogle = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
+const loginGoogle = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
+
     setError(null);
+
     if (!hasGoogleConfig) {
-      await loginDemo();
-      return { ok: true, reason: 'demo' };
+        await loginDemo();
+        return { ok: true, reason: 'demo' };
     }
+
     try {
-      const r = await promptAsync();
-      if (r.type === 'success') return { ok: true };
-      if (r.type === 'cancel' || r.type === 'dismiss') return { ok: false, reason: 'cancelled' };
-      return { ok: false, reason: 'error' };
+
+        await GoogleSignin.hasPlayServices();
+
+        const user = await GoogleSignin.signIn();
+
+        const tokens = await GoogleSignin.getTokens();
+
+        const accessToken = tokens.accessToken;
+
+        const u: AuthUser = {
+            id: user.user.id,
+            email: user.user.email,
+            name: user.user.name ?? '',
+            picture: user.user.photo ?? undefined,
+            accessToken,
+            demo: false,
+        };
+
+        await secureStore.set(TOKEN_KEY, accessToken);
+
+        await deriveAndStoreKey(u.id);
+
+        await storage.setUser(u);
+
+        setUser(u);
+
+        return { ok: true };
+
     } catch (e: any) {
-      const msg = e?.message || 'error';
-      setError(msg);
-      return { ok: false, reason: msg };
+
+        if (e.code === statusCodes.SIGN_IN_CANCELLED)
+            return { ok: false, reason: 'cancelled' };
+
+        if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE)
+            return { ok: false, reason: 'Play Services missing' };
+
+        console.log(e);
+
+        setError(e.message);
+
+        return { ok: false, reason: e.message };
     }
-  }, [hasGoogleConfig, promptAsync, loginDemo]);
+
+}, [loginDemo, hasGoogleConfig]);
 
   const logout = useCallback(async () => {
     try {
       setLoading(true);
+     await GoogleSignin.signOut();
+
       await clearKey();
+
       await secureStore.del(TOKEN_KEY);
+
       await storage.setUser(null);
+
       setUser(null);
       setError(null);
     } catch (e: any) {

@@ -91,15 +91,15 @@ export default function Profile() {
         <Animated.View entering={FadeInDown.delay(150).duration(300)} style={styles.stats}>
           <View style={styles.statBox}>
             <Text style={styles.statN}>{docs.length}</Text>
-            <Text style={styles.statL}>Documents</Text>
+            <Text style={[styles.statL,{fontSize: 10}]}>Documents</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={styles.statN}>{family.length}</Text>
-            <Text style={styles.statL}>Members</Text>
+            <Text style={[styles.statL,{fontSize: 10}]}>Members</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={[styles.statN, { fontSize: 14, marginTop: 2 }]}>AES‑256</Text>
-            <Text style={styles.statL}>Encryption</Text>
+            <Text style={[styles.statL,{fontSize: 10}]}>Encryption</Text>
           </View>
         </Animated.View>
 
