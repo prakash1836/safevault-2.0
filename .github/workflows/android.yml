@@ -9,36 +9,40 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: frontend
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: yarn
           cache-dependency-path: frontend/yarn.lock
 
       - name: Install packages
+        working-directory: frontend
         run: yarn install --frozen-lockfile
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Give execute permission
-        run: chmod +x android/gradlew
+        working-directory: frontend/android
+        run: chmod +x gradlew
 
       - name: Build APK
-        run: ./android/gradlew assembleDebug
+        working-directory: frontend/android
+        run: ./gradlew assembleDebug
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
           name: SafeVault-debug
           path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
