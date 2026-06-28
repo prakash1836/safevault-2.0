@@ -3,7 +3,7 @@ import type { VaultDocument, VaultEvent, FamilyMember, DriveUsage } from '../typ
 import { storage } from '../services/storage';
 import { useAuth } from './AuthContext';
 import { getKey, encryptBase64 } from '../services/encryption';
-import { uploadToDrive, deleteFromDrive, fetchDriveQuota } from '../services/drive';
+import { uploadToDrive, deleteFromDrive, fetchDriveQuota, saveEncryptedLocal } from '../services/drive';
 import { scheduleReminders, cancelAllForId, initNotifications } from '../services/notifications';
 import { getDocStatus } from '../utils/date';
 import { addDays } from 'date-fns';
@@ -14,6 +14,8 @@ interface VaultCtx {
   family: FamilyMember[];
   drive: DriveUsage;
   loading: boolean;
+  uploading: boolean;
+  uploadError: string | null;
   addDoc: (
     input: Omit<VaultDocument, 'id' | 'createdAt' | 'updatedAt' | 'encrypted' | 'fileId'> & { fileBase64: string }
   ) => Promise<VaultDocument>;
@@ -25,6 +27,7 @@ interface VaultCtx {
   updateFamily: (id: string, patch: Partial<FamilyMember>) => Promise<void>;
   removeFamily: (id: string) => Promise<void>;
   refreshDrive: () => Promise<void>;
+  clearUploadError: () => void;
   vaultHealth: number;
   expiringCount: number;
 }
@@ -40,6 +43,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [family, setFamily] = useState<FamilyMember[]>([]);
   const [drive, setDrive] = useState<DriveUsage>({ total: 15 * 1024 * 1024 * 1024, used: 0, vault: 0 });
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -51,30 +56,35 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     }
     (async () => {
       setLoading(true);
-      await initNotifications();
-      const [d, e, f, dr, seeded] = await Promise.all([
-        storage.getDocs(),
-        storage.getEvents(),
-        storage.getFamily(),
-        storage.getDrive(),
-        storage.isSeeded(),
-      ]);
-      if (!seeded) {
-        const seed = buildSeed();
-        setDocs(seed.docs);
-        setEvents(seed.events);
-        setFamily(seed.family);
-        await storage.setDocs(seed.docs);
-        await storage.setEvents(seed.events);
-        await storage.setFamily(seed.family);
-        await storage.markSeeded();
-      } else {
-        setDocs(d);
-        setEvents(e);
-        setFamily(f);
+      try {
+        await initNotifications();
+        const [d, e, f, dr, seeded] = await Promise.all([
+          storage.getDocs(),
+          storage.getEvents(),
+          storage.getFamily(),
+          storage.getDrive(),
+          storage.isSeeded(),
+        ]);
+        if (!seeded) {
+          const seed = buildSeed();
+          setDocs(seed.docs);
+          setEvents(seed.events);
+          setFamily(seed.family);
+          await storage.setDocs(seed.docs);
+          await storage.setEvents(seed.events);
+          await storage.setFamily(seed.family);
+          await storage.markSeeded();
+        } else {
+          setDocs(d);
+          setEvents(e);
+          setFamily(f);
+        }
+        setDrive(dr);
+      } catch (e) {
+        console.warn('Failed to load vault data:', e);
+      } finally {
+        setLoading(false);
       }
-      setDrive(dr);
-      setLoading(false);
       // Try refresh quota in background
       try {
         const q = await fetchDriveQuota(user);
@@ -84,40 +94,82 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [user]);
 
+  const clearUploadError = useCallback(() => setUploadError(null), []);
+
   const addDoc: VaultCtx['addDoc'] = useCallback(
     async (input) => {
       if (!user) throw new Error('Not logged in');
-      const key = await getKey();
-      if (!key) throw new Error('Missing encryption key');
-      const cipher = encryptBase64(input.fileBase64, key);
-      const fileId = await uploadToDrive(user, input.name, cipher, input.mimeType || 'application/octet-stream');
-      const now = new Date().toISOString();
-      const id = 'doc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      const doc: VaultDocument = {
-        id,
-        name: input.name,
-        category: input.category,
-        ownerId: input.ownerId,
-        fileId,
-        localUri: user.demo ? fileId : null,
-        mimeType: input.mimeType,
-        size: input.size,
-        encrypted: true,
-        issueDate: input.issueDate,
-        expiryDate: input.expiryDate,
-        notes: input.notes,
-        reminder: input.reminder,
-        createdAt: now,
-        updatedAt: now,
-      };
-      const next = [doc, ...docs];
-      setDocs(next);
-      await storage.setDocs(next);
-      if (doc.expiryDate) {
-        const ids = await scheduleReminders(doc.id, doc.name, doc.expiryDate, doc.reminder);
-        reminderIdsStore.set(doc.id, ids);
+      setUploading(true);
+      setUploadError(null);
+      
+      try {
+        const key = await getKey();
+        if (!key) throw new Error('Missing encryption key. Please log out and log in again.');
+        
+        // Encrypt the file
+        const cipher = encryptBase64(input.fileBase64, key);
+        
+        // Upload to Drive or save locally
+        let fileId: string;
+        let localUri: string | null = null;
+        
+        try {
+          fileId = await uploadToDrive(user, input.name, cipher, input.mimeType || 'application/octet-stream');
+          // For demo mode, fileId is the local file ID
+          if (user.demo || fileId.startsWith('demo_')) {
+            localUri = `${fileId}`;
+          }
+        } catch (uploadErr: any) {
+          console.warn('Drive upload failed, saving locally:', uploadErr);
+          // Fallback to local storage
+          const fakeId = 'local_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+          await saveEncryptedLocal(fakeId, cipher);
+          fileId = fakeId;
+          localUri = fakeId;
+        }
+        
+        const now = new Date().toISOString();
+        const id = 'doc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const doc: VaultDocument = {
+          id,
+          name: input.name,
+          category: input.category,
+          ownerId: input.ownerId,
+          fileId,
+          localUri,
+          mimeType: input.mimeType,
+          size: input.size,
+          encrypted: true,
+          issueDate: input.issueDate,
+          expiryDate: input.expiryDate,
+          notes: input.notes,
+          reminder: input.reminder,
+          createdAt: now,
+          updatedAt: now,
+        };
+        
+        const next = [doc, ...docs];
+        setDocs(next);
+        await storage.setDocs(next);
+        
+        // Schedule reminders
+        if (doc.expiryDate) {
+          try {
+            const ids = await scheduleReminders(doc.id, doc.name, doc.expiryDate, doc.reminder);
+            reminderIdsStore.set(doc.id, ids);
+          } catch (e) {
+            console.warn('Failed to schedule reminders:', e);
+          }
+        }
+        
+        return doc;
+      } catch (e: any) {
+        const msg = e?.message || 'Upload failed';
+        setUploadError(msg);
+        throw new Error(msg);
+      } finally {
+        setUploading(false);
       }
-      return doc;
     },
     [user, docs]
   );
@@ -242,6 +294,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         family,
         drive,
         loading,
+        uploading,
+        uploadError,
         addDoc,
         updateDoc,
         deleteDoc,
@@ -251,6 +305,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         updateFamily,
         removeFamily,
         refreshDrive,
+        clearUploadError,
         vaultHealth,
         expiringCount,
       }}

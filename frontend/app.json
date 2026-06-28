@@ -1,22 +1,24 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "SafeVault",
+    "slug": "safevault",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "safevault",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.safevault.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.safevault.app"
     },
     "web": {
       "bundler": "metro",
@@ -36,10 +38,18 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-font",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c4d268cc-22cb-46be-9bf7-ef8ef3eff5d0"
+      }
     }
   }
 }
