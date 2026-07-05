@@ -32,12 +32,16 @@ const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
 const hasGoogleConfig = !!webClientId;
 
+console.log("WEB CLIENT =", webClientId);
 useEffect(() => {
+  console.log("WEB CLIENT =", webClientId);
   GoogleSignin.configure({
     webClientId,
     offlineAccess: false,
     scopes: GOOGLE_SCOPES,
   });
+
+  console.log("Google configured");
 }, []);
 
   // Load saved user session on app start
@@ -94,13 +98,14 @@ const loginGoogle = useCallback(async (): Promise<{ ok: boolean; reason?: string
 
         await GoogleSignin.hasPlayServices();
 
+        console.log("Play Services OK");
         const user = await GoogleSignin.signIn();
-
+        console.log("User signed in:", user);
         const tokens = await GoogleSignin.getTokens();
 
         const accessToken = tokens.accessToken;
 
-        const u: AuthUser = {
+       const u: AuthUser = {
             id: user.user.id,
             email: user.user.email,
             name: user.user.name ?? '',
@@ -127,7 +132,8 @@ const loginGoogle = useCallback(async (): Promise<{ ok: boolean; reason?: string
         if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE)
             return { ok: false, reason: 'Play Services missing' };
 
-        console.log(e);
+        console.log("ERROR =", e);
+        console.log("ERROR JSON =", JSON.stringify(e, null, 2));
 
         setError(e.message);
 
