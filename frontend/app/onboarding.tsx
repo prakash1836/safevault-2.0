@@ -9,6 +9,7 @@ import { useTheme } from '../src/contexts/ThemeContext';
 import { useAuth } from '../src/contexts/AuthContext';
 import { PrimaryButton, Card } from '../src/components/UI';
 import { PressableScale } from '../src/components/PressableScale';
+import { Logo } from '../src/components/Logo';
 import { colors, radius, spacing, shadow, typography } from '../src/constants/theme';
 import { hapt } from '../src/utils/haptics';
 
@@ -76,7 +77,7 @@ export default function Onboarding() {
         {/* Header with trust messaging */}
         <Animated.View entering={FadeIn.duration(300)} style={styles.header}>
           <View style={[styles.shield, { backgroundColor: t.accentDark }]}>
-            <ShieldCheck color="#fff" size={28} strokeWidth={1.6} />
+            <Logo size={44} onDark primary={t.accent} accent="#FFFFFF" />
           </View>
           <Text style={styles.h1}>Secure your vault</Text>
           <Text style={styles.h2}>
@@ -209,7 +210,7 @@ const styles = StyleSheet.create({
   
   // Header
   header: { paddingVertical: spacing.lg, marginBottom: spacing.xl },
-  shield: { width: 64, height: 64, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg, ...shadow.md },
+  shield: { width: 72, height: 72, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg, ...shadow.md },
   h1: { ...typography.h1, color: colors.textPrimary },
   h2: { ...typography.body, color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 22 },
 

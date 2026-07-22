@@ -10,12 +10,12 @@ import { colors, radius, spacing } from '../../src/constants/theme';
 export default function ThemeSettings() {
   const t = useTheme();
   const router = useRouter();
-  const [hex, setHex] = useState('#4A7D6A');
+  const [hex, setHex] = useState('#2461E8');
 
   const isHex = /^#[0-9a-fA-F]{6}$/.test(hex);
 
   const applyCustom = async () => {
-    if (!isHex) { Alert.alert('Invalid color', 'Use a 6-digit hex like #4A7D6A'); return; }
+    if (!isHex) { Alert.alert('Invalid color', 'Use a 6-digit hex like #2461E8'); return; }
     const { dark, surface } = suggestDarkSurface(hex);
     await t.setCustom(hex, dark, surface);
   };

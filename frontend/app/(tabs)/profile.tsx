@@ -28,7 +28,7 @@ export default function Profile() {
     ]);
   };
 
-  const presetName = t.preset === 'custom' ? 'Custom' : (PRESETS as any)[t.preset]?.name || 'Forest Green';
+  const presetName = t.preset === 'custom' ? 'Custom' : (PRESETS as any)[t.preset]?.name || 'Trust Blue';
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>

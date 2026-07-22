@@ -1,86 +1,69 @@
 # SafeVault — Product Requirements Document
 
-## Vision
-A no-server, client-encrypted personal document vault that lives in the user's own Google Drive. Trust-forward, family-friendly, beautifully designed.
+## Original Problem Statement
+Refine the existing SafeVault React Native (Expo + TypeScript) mobile app to a polished, premium-quality experience — like something built by Google, Notion, Apple, or Dropbox — without changing the navigation flow, architecture, or business logic. Preserve Google Drive integration and authentication. Improve spacing, typography, alignment, icon consistency, buttons, colors, empty/loading/success states, and branding. Add a modern SVG logo, an animated splash under 3s with tagline "Secure. Organize. Never Forget.", and elevate reminders on the dashboard.
 
-## Implemented Features
+## User Choices Captured
+- Codebase access: use existing code in `/app`
+- Deliverable order: prepare report and implement in the same pass
+- Design direction: "You decide" — premium mobile aesthetic
+- Color palette: **Trust Blue** as default (theme selector remains for user to change later)
+- Logo: SVG-based
 
-### Authentication & Onboarding
-- **Splash → Login → Onboarding → Home** flow
-- **Login screen**: Logo (Shield icon) + tagline + 3 feature pillars + Drive education
-- **Real Google OAuth** via `expo-auth-session/providers/google` (Web + Android Client IDs configured)
-- **Demo Mode**: bypasses OAuth, creates synthetic user, seeds vault
-- **One-time Onboarding**: Drive connect + Notifications + Photos permissions, with mandatory warnings if skipped
+## Personas
+- **First-time users** who need document security they can trust at a glance
+- **Family administrators** managing IDs, insurance, and expiring documents for multiple people
+- **Returning users** who rely on reminders to avoid missed renewals
 
-### Vault & Documents
-- AES-256 encryption (`crypto-js` PBKDF2-derived key, IV per file)
-- Platform-aware secure storage (SecureStore on native, AsyncStorage fallback on web)
-- 4-step Upload Wizard: Type → File → Details → Review (with sample-file fallback for web preview)
-- Document Detail screen with **Edit** + **Download** + Delete
-- Document categories: Insurance, ID, Health, Finance, Education, Property, Vehicle, Other
-- Status badges: Valid / Expiring / Expired / Overdue
+## Architecture (unchanged)
+- Expo Router file-based navigation
+- Contexts: Auth, Vault, Upload, Theme (with runtime preset + custom hex), Permissions
+- Client-side AES-256 encryption before Drive upload (drive.file scope)
+- MongoDB backend (present, minimal use for this UI refinement)
+- Reanimated 3 + Haptics for micro-interactions
 
-### Home Dashboard
-- **Vault Health** circular metric card (themed accent)
-- **Drive Storage Meter** with low-space warning
-- **Notification Bell** with badge + bottom-sheet alerts feed (expiring, expired, drive-low, permission warnings)
-- "Needs Attention" list (expiring/expired docs)
-- "Missing in your vault" suggestions (Passport, Aadhaar, etc.)
-- Family carousel (tap to focus member)
+## Core Requirements (Static)
+- Never change navigation flow, screen names, feature names, or business logic
+- Preserve Google Drive integration & authentication (Google Sign-In + demo mode)
+- Every interactive element has `testID`
+- Splash under 3 seconds
+- Theme is user-changeable at any time
 
-### Timeline
-- 3 view modes: **All / By Month / By Year**
-- Member filter chips
-- Color-coded expiring (amber) and overdue (red) items
-- Member avatar/name on each row
-- Tap doc-event → opens detail
+## What's Been Implemented (Jan 22, 2026)
+- **`/app/UX_REPORT.md`** — full analysis: strengths, weaknesses, UI inconsistencies, UX improvements, components refined, animations, branding, accessibility, and performance considerations
+- **`src/components/Logo.tsx`** — new SVG SafeVault brandmark (shield silhouette + vault dial + subtle document fold), plus `LogoMonogram` badge variant, with `onDark` mode for dark-hero backgrounds
+- **`app/index.tsx`** — new animated splash: pop-in logo (spring scale), halo glow, "SafeVault" wordmark reveal, tagline "Secure. Organize. Never forget." — total ~1.6s before auto-navigation
+- **`src/constants/theme.ts`** — refined default primary to Trust Blue `#2461E8` / dark `#0F1F52` / surface `#E4ECFB`; navy-tinted premium shadow layers
+- **`src/contexts/ThemeContext.tsx`** — `ocean` preset renamed "Trust Blue" (`#2461E8`) and set as the default (preserving user preference on first launch)
+- **`app/login.tsx`** — uses new `Logo`, updated tagline, refined CTA hierarchy (primary Google button + ghost demo link), staggered feature card reveals
+- **`app/onboarding.tsx`** — shield tile now renders the new `Logo`
+- **`app/(tabs)/_layout.tsx`** — animated pill background under the active tab (spring + fade); FAB has a subtle glow halo; haptic feedback on tab switches
+- **`app/(tabs)/home.tsx`** — new **`PriorityReminderCard`** rendered above the Vault Health card whenever a document is expired or expiring (elevates reminders as the app's stated core value), subtle pulse animation for expired icon; vault ring color made theme-neutral (white on navy)
+- **`app/settings/theme.tsx`** — default custom hex updated to `#2461E8`, swatch palette starts with Trust Blue
+- **`app/upload/type.tsx`** — replaced hardcoded `colors.primary` with the active theme accent; entrance stagger; haptic selection
+- **`app.json`** — native splash background updated from `#000` to `#0F1F52` (matches Trust Blue dark) for a seamless launch → animated splash → app transition
+- Removed all lingering references to the old Forest palette in the default paths
 
-### Documents Hub
-- Search + Status filter (All / Expiring / Valid / Expired)
-- **Member filter** chips (separate row, fixed wrap bug — chips no longer stretch vertically)
-- **Group toggle**: List view vs By Upload Month
-- Cards with thumbnail, owner name, expiry, status badge
+## Prioritized Backlog / Next Tasks
+- **P1**: Fix pre-existing TypeScript type errors in `src/contexts/AuthContext.tsx` (SignInResponse `user` field mismatch) — not blocking; unrelated to UI refinement
+- **P2**: Optional custom font (e.g. Bricolage Grotesque via `expo-font`) for a more distinctive brand voice
+- **P2**: Add subtle SVG illustrations to the `EmptyState` component (currently uses icon disc)
+- **P2**: Confetti-lite on successful upload
+- **P3**: Localize copy (currently English only)
 
-### Family Management
-- Photo upload **with crop** (`expo-image-picker` `allowsEditing: true`)
-- Initials fallback when no photo
-- Add / Edit / Remove members (DOB, relation)
-- **Tap member → see all their documents** (modal)
+## Files Touched (visual/theme layer only)
+- `/app/UX_REPORT.md` (new)
+- `/app/frontend/src/components/Logo.tsx` (new)
+- `/app/frontend/src/constants/theme.ts` (modified)
+- `/app/frontend/src/contexts/ThemeContext.tsx` (modified)
+- `/app/frontend/app/index.tsx` (rewritten — animated splash)
+- `/app/frontend/app/login.tsx` (modified)
+- `/app/frontend/app/onboarding.tsx` (modified)
+- `/app/frontend/app/(tabs)/_layout.tsx` (rewritten — active pill)
+- `/app/frontend/app/(tabs)/home.tsx` (modified — Priority Reminder card)
+- `/app/frontend/app/(tabs)/profile.tsx` (minor: fallback label)
+- `/app/frontend/app/settings/theme.tsx` (minor: default hex + swatch order)
+- `/app/frontend/app/upload/type.tsx` (fixed theme wiring)
+- `/app/frontend/app.json` (splash background)
 
-### Theme System
-- 5 presets: Forest Green, Ocean Blue, Royal Purple, Sunset Orange, Charcoal
-- **Custom hex color picker** with auto-derived dark + surface tones
-- Persists via AsyncStorage
-- Live preview card
-
-### Profile
-- Permission warnings panel (red banner if any are off) with quick-grant buttons
-- Theme link, Family link, Drive connect link, Reminders, Security info, About
-- Signout with confirmation
-
-### Notifications & Alerts
-- 30/7/1-day reminders scheduled per document via `expo-notifications`
-- Home screen alert sheet aggregates: expired docs, expiring soon, drive low, missing permissions
-- Android notification channel configured
-
-### Mobile Polish
-- Bottom tab bar respects **safe area insets** (no overlap with home indicator)
-- Filter chips use `flexShrink: 0` to prevent vertical wrapping
-- Themed FAB at center
-- KeyboardAvoidingView on form screens
-
-## Stack
-- React Native 0.81 + Expo SDK 54
-- Expo Router (file-based)
-- TypeScript strict
-- AsyncStorage + SecureStore + expo-file-system (encrypted file cache)
-- crypto-js (AES-256-CBC, PBKDF2)
-- expo-auth-session/providers/google
-- expo-notifications, expo-image-picker, expo-document-picker, expo-media-library
-- lucide-react-native icons
-
-## Architecture
-- `src/contexts/`: AuthContext · VaultContext · UploadContext · ThemeContext · PermissionsContext
-- `src/services/`: encryption · drive · auth · storage · notifications
-- `src/components/`: UI primitives (PrimaryButton, Chip, StatusBadge, Card, ProgressBar, Stepper)
-- `app/`: file-based routes (login, onboarding, (tabs), upload/, document/[id], family, settings/theme)
+Business logic, encryption, drive service, authentication, storage, notifications, and navigation flow — **untouched**.

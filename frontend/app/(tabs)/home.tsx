@@ -2,8 +2,8 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, Image, Modal, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Bell, Cloud, ShieldCheck, ArrowRight, Plus, AlertCircle, AlertTriangle, Sparkles } from 'lucide-react-native';
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import { Bell, Cloud, ShieldCheck, ArrowRight, Plus, AlertCircle, AlertTriangle, Sparkles, Clock, ChevronRight } from 'lucide-react-native';
+import Animated, { FadeInDown, FadeIn, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useVault } from '../../src/contexts/VaultContext';
@@ -44,6 +44,59 @@ function VaultRing({ progress, size = 90, strokeWidth = 8, color }: { progress: 
       <Circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(255,255,255,0.15)" strokeWidth={strokeWidth} fill="transparent" />
       <Circle cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={strokeWidth} fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
     </Svg>
+  );
+}
+
+// Priority reminder card — appears when at least one document needs attention.
+// Placed above the Vault Health card to naturally guide the user's eye first to reminders.
+function PriorityReminderCard({ doc, accent, accentSurface, onPress }: any) {
+  const status = getDocStatus(doc.expiryDate);
+  const isExpired = status === 'expired';
+  const days = daysUntil(doc.expiryDate);
+  const tone = isExpired ? colors.expired : '#8E6A20';
+  const toneSurface = isExpired ? colors.expiredSurface : colors.expiringSurface;
+
+  // Subtle pulse on the icon disc if expired
+  const pulse = useSharedValue(1);
+  React.useEffect(() => {
+    if (isExpired) {
+      pulse.value = withRepeat(
+        withSequence(withTiming(1.08, { duration: 900 }), withTiming(1, { duration: 900 })),
+        -1,
+        false
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExpired]);
+  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+
+  return (
+    <PressableScale onPress={onPress} haptic="light" testID="priority-reminder-card">
+      <View style={styles.priorityCard}>
+        <View style={styles.priorityLeft}>
+          <Animated.View style={[styles.priorityIcon, { backgroundColor: toneSurface }, pulseStyle]}>
+            {isExpired ? <AlertCircle color={tone} size={22} strokeWidth={1.8} /> : <Clock color={tone} size={22} strokeWidth={1.8} />}
+          </Animated.View>
+          <View style={{ flex: 1 }}>
+            <View style={styles.priorityLabelRow}>
+              <View style={[styles.priorityDot, { backgroundColor: tone }]} />
+              <Text style={[styles.priorityLabel, { color: tone }]}>
+                {isExpired ? 'Action required' : 'Upcoming'}
+              </Text>
+            </View>
+            <Text style={styles.priorityName} numberOfLines={1}>{doc.name}</Text>
+            <Text style={styles.prioritySub}>
+              {isExpired
+                ? `Expired ${fmtDate(doc.expiryDate)}`
+                : days === 0
+                  ? 'Expires today'
+                  : `Expires in ${days} day${days === 1 ? '' : 's'} · ${fmtDate(doc.expiryDate)}`}
+            </Text>
+          </View>
+        </View>
+        <ChevronRight color={colors.textTertiary} size={18} />
+      </View>
+    </PressableScale>
   );
 }
 
@@ -145,11 +198,23 @@ export default function Home() {
           </IconButton>
         </Animated.View>
 
+        {/* Priority Reminder Card — surfaces the most urgent item (elevates reminders per brand focus) */}
+        {upcoming.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(60).duration(320)} style={{ marginBottom: spacing.md }}>
+            <PriorityReminderCard
+              doc={upcoming[0]}
+              accent={t.accent}
+              accentSurface={t.accentSurface}
+              onPress={() => router.push(`/document/${upcoming[0].id}`)}
+            />
+          </Animated.View>
+        )}
+
         {/* Premium Vault Health Card with Ring */}
         <Animated.View entering={FadeInDown.delay(100).duration(350)} style={[styles.healthCard, { backgroundColor: t.accentDark }]} testID="vault-health-card">
           <View style={styles.healthTop}>
             <View style={styles.healthRingWrap}>
-              <VaultRing progress={vaultHealth / 100} color="#9AC5B2" size={94} strokeWidth={8} />
+              <VaultRing progress={vaultHealth / 100} color="rgba(255,255,255,0.9)" size={94} strokeWidth={8} />
               <View style={styles.healthRingInner}>
                 <Text style={styles.healthRingValue}>{vaultHealth}</Text>
                 <Text style={styles.healthRingLabel}>%</Text>
@@ -427,4 +492,25 @@ const styles = StyleSheet.create({
   alertDot: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   alertTitle: { ...typography.body, fontWeight: '700', color: colors.textPrimary },
   alertSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+
+  // Priority Reminder Card
+  priorityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.card,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    ...shadow.sm,
+  },
+  priorityLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1 },
+  priorityIcon: { width: 48, height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  priorityLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  priorityDot: { width: 6, height: 6, borderRadius: 3 },
+  priorityLabel: { ...typography.overline, fontSize: 10 },
+  priorityName: { ...typography.h3, color: colors.textPrimary },
+  prioritySub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
 });

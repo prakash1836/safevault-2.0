@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type ThemePreset = 'forest' | 'ocean' | 'royal' | 'sunset' | 'mono' | 'custom';
+export type ThemePreset = 'ocean' | 'forest' | 'royal' | 'sunset' | 'mono' | 'custom';
 
 export const PRESETS: Record<Exclude<ThemePreset, 'custom'>, { name: string; primary: string; dark: string; surface: string }> = {
+  ocean:  { name: 'Trust Blue',    primary: '#2461E8', dark: '#0F1F52', surface: '#E4ECFB' },
   forest: { name: 'Forest Green',  primary: '#4A7D6A', dark: '#1C3F3A', surface: '#E5EFEA' },
-  ocean:  { name: 'Ocean Blue',    primary: '#3D6E8F', dark: '#163147', surface: '#E1ECF4' },
   royal:  { name: 'Royal Purple',  primary: '#6E5AAB', dark: '#2E2350', surface: '#ECE6F7' },
   sunset: { name: 'Sunset Orange', primary: '#D17A4A', dark: '#5C2C16', surface: '#F8E5D7' },
   mono:   { name: 'Charcoal',      primary: '#3F4146', dark: '#0F1012', surface: '#E8E9EB' },
@@ -47,7 +47,7 @@ function softTint(hex: string): string {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [preset, setPresetState] = useState<ThemePreset>('forest');
+  const [preset, setPresetState] = useState<ThemePreset>('ocean');
   const [custom, setCustomState] = useState<{ primary: string; dark: string; surface: string } | null>(null);
 
   useEffect(() => {
@@ -80,7 +80,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [persist]);
 
   const value = useMemo<ThemeShape>(() => {
-    let p = PRESETS.forest;
+    let p = PRESETS.ocean;
     if (preset === 'custom' && custom) {
       p = { name: 'Custom', ...custom };
     } else if (preset !== 'custom') {
