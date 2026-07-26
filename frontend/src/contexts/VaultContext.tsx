@@ -5,6 +5,7 @@ import { useAuth } from './AuthContext';
 import { getKey, encryptBase64 } from '../services/encryption';
 import { uploadToDrive, deleteFromDrive, fetchDriveQuota, saveEncryptedLocal } from '../services/drive';
 import { scheduleReminders, cancelAllForId, initNotifications } from '../services/notifications';
+import { Migration } from '../services/migration';
 import { getDocStatus } from '../utils/date';
 import { addDays } from 'date-fns';
 
@@ -94,6 +95,19 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       try {
         await initNotifications();
         await hydrateReminderStore();
+        // One-time storage migration to SQLite. Idempotent, guarded by a flag.
+        // Never throws — logs and continues. VaultContext reads still come from
+        // AsyncStorage until Sprint 3 wires the SQLite/manifest path.
+        try {
+          const res = await Migration.runIfNeeded();
+          if (res.ranMigration) {
+            // eslint-disable-next-line no-console
+            console.log('[migration] v2 completed:', res);
+          }
+        } catch (mErr) {
+          // eslint-disable-next-line no-console
+          console.warn('[migration] failed (non-fatal):', mErr);
+        }
         const [d, e, f, dr, seeded] = await Promise.all([
           storage.getDocs(),
           storage.getEvents(),

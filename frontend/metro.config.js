@@ -11,15 +11,23 @@ config.cacheStores = [
   new FileStore({ root: path.join(root, 'cache') }),
 ];
 
-
-// // Exclude unnecessary directories from file watching
-// config.watchFolders = [__dirname];
-// config.resolver.blacklistRE = /(.*)\/(__tests__|android|ios|build|dist|.git|node_modules\/.*\/android|node_modules\/.*\/ios|node_modules\/.*\/windows|node_modules\/.*\/macos)(\/.*)?$/;
-
-// // Alternative: use a more aggressive exclusion pattern
-// config.resolver.blacklistRE = /node_modules\/.*\/(android|ios|windows|macos|__tests__|\.git|.*\.android\.js|.*\.ios\.js)$/;
+// On the web platform, expo-sqlite ships a WASM worker that Metro cannot
+// resolve. We alias the whole module to an empty stub for web only — the
+// real driver is loaded lazily on native (see src/services/sqlite.ts).
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === 'web' && moduleName === 'expo-sqlite') {
+    return {
+      type: 'sourceFile',
+      filePath: path.resolve(__dirname, 'src/services/_stubs/expo-sqlite-web.js'),
+    };
+  }
+  if (originalResolveRequest) return originalResolveRequest(context, moduleName, platform);
+  return context.resolveRequest(context, moduleName, platform);
+};
 
 // Reduce the number of workers to decrease resource usage
 config.maxWorkers = 2;
 
 module.exports = config;
+
