@@ -3,7 +3,7 @@ name: Android Build
 on:
   push:
     branches:
-      - appdevelopment
+      - beforeappdevelopment
 
 jobs:
   build:
