@@ -1,0 +1,73 @@
+{
+  "summary": "SafeVault Phase 2 Sprint 1 verification (frontend-only, static + regression E2E). All acceptance criteria met: drive.ts extended with the required new low-level ops preserving existing exports; folderManager.ts implemented per spec; storage.ts extended with 4 new K entries + DriveSubfolders + clearDriveCache; web guards in place; UI files untouched; VaultContext untouched; two UI-adjacent null-guards for readEncryptedLocal correctly added. TypeScript compile clean (npx tsc --noEmit --skipLibCheck → exit 0). Metro bundler produces only pre-existing shadow*/expo-notifications warnings, no NEW errors. Regression E2E through login → onboarding → home → docs → add-wizard confirms no UI regressions.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "static_inspection_results": {
+    "drive.ts": {
+      "existing_exports_preserved": ["uploadToDrive", "deleteFromDrive", "fetchDriveQuota", "saveEncryptedLocal", "readEncryptedLocal", "deleteEncryptedLocal", "UploadOptions"],
+      "new_exports_present": ["downloadFromDrive", "createFolderOnDrive", "findFileOnDrive", "updateFileOnDrive", "resumableUpload", "DownloadOptions", "DriveFileRef", "FindQuery", "UpdateFilePatch"],
+      "IS_WEB_declared_and_used_in_ensureDir": true,
+      "saveEncryptedLocal_returns_string_or_null": true,
+      "readEncryptedLocal_returns_string_or_null": true,
+      "deleteEncryptedLocal_noop_on_web": true,
+      "uploadToDrive_routes_to_resumable_on_threshold": "line 202: `if (ciphertext.length >= RESUMABLE_UPLOAD_THRESHOLD_BYTES) return resumableUpload(...)`",
+      "findFileOnDrive_uses_q_with_escaped_quotes_and_trashed_false": "esc() replaces ' with \\', clauses seeded with `trashed = false` when includeTrashed is falsy",
+      "createFolderOnDrive_uses_folder_mimetype": "FOLDER_MIME = 'application/vnd.google-apps.folder' posted as mimeType"
+    },
+    "folderManager.ts": {
+      "exports": ["FolderManager", "SAFEVAULT_APP_TAG", "SafeVaultRole (type)"],
+      "methods_present": ["ensureRoot", "ensureSubfolder", "ensureCategoryFolder", "ensureDocFolder", "getCache", "forgetDocFolder", "invalidateCache"],
+      "hydrate_populates_from_AsyncStorage": true,
+      "root_named_SafeVault_with_appProperties": "safevault:'1', safevault.role:'root'",
+      "category_folder_path_and_tags": "SafeVault/docs/<Category> with safevault.role:'category' + safevault.category:<cat>",
+      "doc_folder_path_and_tags": "SafeVault/docs/<Category>/<docId> with safevault.role:'doc' + safevault.docId + safevault.category",
+      "cache_hit_short_circuit": true,
+      "findOrCreateFolder_queries_first": true,
+      "invalidateCache_calls_storage_clearDriveCache_and_resets_memory": true,
+      "forgetDocFolder_removes_only_given_docId_and_persists": true,
+      "lazy_category_folder_creation": "ensureCategoryFolder is only called from ensureDocFolder / by external callers → lazy by construction"
+    },
+    "storage.ts": {
+      "new_K_entries": ["DRIVE_ROOT_ID", "DRIVE_SUBFOLDERS", "DRIVE_CATEGORY_FOLDERS", "DRIVE_DOC_FOLDERS"],
+      "DriveSubfolders_interface_exported": true,
+      "new_methods": ["getDriveRootId", "setDriveRootId", "getDriveSubfolders", "setDriveSubfolders", "getDriveCategoryFolders", "setDriveCategoryFolders", "getDriveDocFolders", "setDriveDocFolders", "clearDriveCache"],
+      "clearDriveCache_uses_multiRemove_on_4_new_keys": true,
+      "existing_exports_present": ["getDocs", "setDocs", "getEvents", "setEvents", "getFamily", "setFamily", "getUser", "setUser", "getDrive", "setDrive", "getReminderMap", "setReminderMap"],
+      "note_on_seeded_naming": "Spec mentioned getSeeded/setSeeded but the pre-existing code uses isSeeded/markSeeded — this predates Sprint 1 and was not part of scope; naming preserved as-is."
+    },
+    "VaultContext.tsx": "No imports from './folderManager'. No FolderManager references. Still calls uploadToDrive directly. UNCHANGED as required.",
+    "web_guards": {
+      "app/document/[id].tsx": "line 85-86: cipher = await readEncryptedLocal(doc.localUri); if (!cipher) throw new Error('Local cache unavailable on this platform');",
+      "src/components/EncryptedImagePreview.tsx": "line 42-43: same friendly-error null guard"
+    }
+  },
+  "regression_e2e_results": {
+    "login-demo-btn": "clickable, navigates to onboarding",
+    "onboarding-continue-btn": "clickable, navigates to home",
+    "priority-reminder-card": "visible on home",
+    "tab-docs": "switches, docs-sort-row visible",
+    "docs-sort-row": "visible with sort chips",
+    "tab-add-fab": "opens Add-to-Vault wizard (Type/Upload/Details/Review stepper visible)",
+    "tab bar tabs": "tab-home / tab-timeline / tab-docs / tab-profile testIDs all present (count=1 each); switching blocked only while wizard modal was open, expected behaviour"
+  },
+  "typescript_compile": "npx tsc --noEmit --skipLibCheck → exit code 0, zero errors",
+  "metro_logs": "Only pre-existing warnings: shadow* deprecation and [expo-notifications] web-push-token warnings. No new error-level messages.",
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "drive.ts findFileOnDrive: `appProperties has { key='...' and value='...' }` syntax is a Drive v3 quirk — correct as-is, but consider adding a unit test once a token is available in Sprint 3.",
+    "folderManager.ts invalidateCache sets hydrated=true after reset (intentional per comment) — good, avoids a re-hydrate re-populating stale keys after clearDriveCache.",
+    "resumableUpload currently sends the body in a single PUT (documented). True chunked resume is deferred — acceptable for Sprint 1 scope.",
+    "Storage naming inconsistency (isSeeded/markSeeded vs spec's getSeeded/setSeeded) predates Sprint 1; no action needed."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Sprint 1 is a pure storage-layer sprint; VaultContext still calls uploadToDrive directly (no FolderManager integration yet — that lands in Sprint 3). Real Drive API paths (createFolderOnDrive, findFileOnDrive, updateFileOnDrive, downloadFromDrive, resumableUpload) cannot be exercised via web preview because a real Google OAuth token is required. Static inspection + UI regression is the correct verification for this sprint. All acceptance criteria met."
+}

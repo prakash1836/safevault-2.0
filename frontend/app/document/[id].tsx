@@ -81,8 +81,9 @@ export default function DocDetail() {
     try {
       const key = await getKey();
       if (!key) throw new Error('Missing encryption key');
-      let cipher = '';
+      let cipher: string | null = '';
       if (doc.localUri) cipher = await readEncryptedLocal(doc.localUri);
+      if (!cipher) throw new Error('Local cache unavailable on this platform');
       const b64 = decryptToBase64(cipher, key);
       const ext = doc.mimeType?.includes('pdf') ? 'pdf' : doc.mimeType?.includes('png') ? 'png' : doc.mimeType?.includes('jpeg') ? 'jpg' : 'bin';
       const out = (FileSystem.documentDirectory || '') + `safevault_export_${doc.id}.${ext}`;
