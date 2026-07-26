@@ -16,6 +16,8 @@ interface VaultCtx {
   loading: boolean;
   uploading: boolean;
   uploadError: string | null;
+  /** Current upload progress in the range [0, 1]. Resets to 0 when a new upload starts. */
+  uploadProgress: number;
   addDoc: (
     input: Omit<VaultDocument, 'id' | 'createdAt' | 'updatedAt' | 'encrypted' | 'fileId'> & { fileBase64: string }
   ) => Promise<VaultDocument>;
@@ -77,6 +79,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   useEffect(() => {
     if (!user) {
@@ -134,6 +137,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       if (!user) throw new Error('Not logged in');
       setUploading(true);
       setUploadError(null);
+      setUploadProgress(0);
       
       try {
         const key = await getKey();
@@ -147,7 +151,13 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         let localUri: string | null = null;
         
         try {
-          fileId = await uploadToDrive(user, input.name, cipher, input.mimeType || 'application/octet-stream');
+          fileId = await uploadToDrive(
+            user,
+            input.name,
+            cipher,
+            input.mimeType || 'application/octet-stream',
+            { onProgress: (p) => setUploadProgress(p) }
+          );
           // For demo mode, fileId is the local file ID
           if (user.demo || fileId.startsWith('demo_')) {
             localUri = `${fileId}`;
@@ -159,6 +169,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           await saveEncryptedLocal(fakeId, cipher);
           fileId = fakeId;
           localUri = fakeId;
+          setUploadProgress(1);
         }
         
         const now = new Date().toISOString();
@@ -345,6 +356,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         loading,
         uploading,
         uploadError,
+        uploadProgress,
         addDoc,
         updateDoc,
         deleteDoc,

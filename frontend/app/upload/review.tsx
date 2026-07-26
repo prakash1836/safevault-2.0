@@ -9,7 +9,7 @@ import { UploadHeader } from '../../src/components/UploadHeader';
 import { useUpload } from '../../src/contexts/UploadContext';
 import { useVault } from '../../src/contexts/VaultContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
-import { PrimaryButton, Card } from '../../src/components/UI';
+import { PrimaryButton, Card, ProgressBar } from '../../src/components/UI';
 import { PressableScale } from '../../src/components/PressableScale';
 import { colors, radius, spacing, typography, shadow } from '../../src/constants/theme';
 import { fmtDate } from '../../src/utils/date';
@@ -17,11 +17,12 @@ import { hapt } from '../../src/utils/haptics';
 
 export default function ReviewStep() {
   const { draft, reset } = useUpload();
-  const { addDoc, family, uploading, uploadError, clearUploadError } = useVault();
+  const { addDoc, family, uploading, uploadError, uploadProgress, clearUploadError } = useVault();
   const t = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const owner = family.find((f) => f.id === draft.ownerId);
 
   const submit = async () => {
@@ -31,6 +32,7 @@ export default function ReviewStep() {
     }
     hapt.light();
     setLoading(true);
+    setAttempted(true);
     clearUploadError();
     
     try {
@@ -94,9 +96,24 @@ export default function ReviewStep() {
           <Animated.View entering={FadeInDown.duration(200)} style={styles.errorBanner}>
             <AlertCircle color={colors.expired} size={18} />
             <Text style={styles.errorText}>{uploadError}</Text>
-            <PressableScale onPress={clearUploadError} haptic="light">
+            <PressableScale onPress={clearUploadError} haptic="light" testID="review-error-dismiss">
               <Text style={[styles.errorDismiss, { color: t.accent }]}>Dismiss</Text>
             </PressableScale>
+          </Animated.View>
+        )}
+
+        {/* Upload progress (shown during and immediately after an upload attempt) */}
+        {(uploading || (attempted && uploadProgress > 0 && uploadProgress < 1 && !uploadError)) && (
+          <Animated.View entering={FadeIn.duration(200)} style={styles.progressBox} testID="review-progress-box">
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressLabel}>
+                {uploadProgress < 1 ? 'Encrypting & uploading…' : 'Finalising…'}
+              </Text>
+              <Text style={[styles.progressPct, { color: t.accent }]} testID="review-progress-pct">
+                {Math.round(uploadProgress * 100)}%
+              </Text>
+            </View>
+            <ProgressBar value={uploadProgress} color={t.accent} height={6} />
           </Animated.View>
         )}
 
@@ -144,7 +161,13 @@ export default function ReviewStep() {
       
       <View style={styles.footer}>
         <PrimaryButton 
-          title={loading ? "Encrypting..." : "Encrypt & Save"} 
+          title={
+            loading || uploading
+              ? (uploadProgress > 0 ? `Uploading… ${Math.round(uploadProgress * 100)}%` : 'Encrypting…')
+              : uploadError && attempted
+                ? 'Retry upload'
+                : 'Encrypt & Save'
+          }
           loading={loading || uploading} 
           onPress={submit} 
           testID="review-submit-btn" 
@@ -175,6 +198,20 @@ const styles = StyleSheet.create({
   errorBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.expiredSurface, borderRadius: radius.lg, marginBottom: spacing.md },
   errorText: { flex: 1, ...typography.bodySm, color: colors.textPrimary, fontWeight: '600' },
   errorDismiss: { ...typography.bodySm, fontWeight: '700' },
+
+  // Progress
+  progressBox: {
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  progressLabel: { ...typography.bodySm, color: colors.textPrimary, fontWeight: '600' },
+  progressPct: { ...typography.bodySm, fontWeight: '800' },
   
   // File preview
   fileIcon: { width: 52, height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
