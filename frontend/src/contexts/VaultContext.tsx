@@ -150,6 +150,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     UploadCoordinator.setUser(user || null);
     const unsub = UploadCoordinator.subscribe((ev: CoordinatorEvent) => {
+      // Skip progress-only frames during an active upload — they update state
+      // in-memory only. Terminal transitions (synced/failed/pending/deleted)
+      // and the first 'uploading' notice do get persisted. This keeps
+      // AsyncStorage writes bounded when a large file streams to Drive.
+      const isProgressFrame = ev.state === 'uploading' && typeof ev.progress === 'number' && ev.progress > 0 && ev.progress < 1;
       setDocs((cur) => {
         const idx = cur.findIndex((d) => d.id === ev.docId);
         if (idx < 0) return cur;
@@ -164,8 +169,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         };
         const next = [...cur];
         next[idx] = patched;
-        // Persist opportunistically — best-effort, non-blocking.
-        void storage.setDocs(next).catch(() => {});
+        if (!isProgressFrame) {
+          void storage.setDocs(next).catch(() => {});
+        }
         return next;
       });
     });
