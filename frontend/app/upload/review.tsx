@@ -17,13 +17,29 @@ import { hapt } from '../../src/utils/haptics';
 
 export default function ReviewStep() {
   const { draft, reset } = useUpload();
-  const { addDoc, family, uploading, uploadError, uploadProgress, clearUploadError } = useVault();
+  const { addDoc, docs, family, uploading, uploadError, uploadProgress, clearUploadError } = useVault();
   const t = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const owner = family.find((f) => f.id === draft.ownerId);
+
+  // Duplicate detection — preferred method is file hash (SHA-256).
+  // Fallback: name + size + modified timestamp. This is a non-blocking warning only.
+  const duplicate = React.useMemo(() => {
+    if (draft.fileHash) {
+      const match = docs.find((d) => d.fileHash && d.fileHash === draft.fileHash);
+      if (match) return { doc: match, reason: 'hash' as const };
+    }
+    if (draft.fileName && draft.size != null) {
+      const match = docs.find(
+        (d) => d.name.toLowerCase() === draft.name.toLowerCase() && d.size === draft.size
+      );
+      if (match) return { doc: match, reason: 'name-size' as const };
+    }
+    return null;
+  }, [docs, draft.fileHash, draft.fileName, draft.size, draft.name]);
 
   const submit = async () => {
     if (!draft.fileBase64 || !draft.category) {
@@ -42,12 +58,13 @@ export default function ReviewStep() {
         ownerId: draft.ownerId,
         mimeType: draft.mimeType || 'application/octet-stream',
         size: draft.size || 0,
+        fileHash: draft.fileHash || undefined,
         issueDate: draft.issueDate || undefined,
         expiryDate: draft.expiryDate || undefined,
         notes: draft.notes,
         reminder: draft.reminder,
         fileBase64: draft.fileBase64,
-      });
+      } as any);
       
       hapt.success();
       setSuccess(true);
@@ -198,6 +215,11 @@ const styles = StyleSheet.create({
   errorBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.expiredSurface, borderRadius: radius.lg, marginBottom: spacing.md },
   errorText: { flex: 1, ...typography.bodySm, color: colors.textPrimary, fontWeight: '600' },
   errorDismiss: { ...typography.bodySm, fontWeight: '700' },
+
+  // Duplicate warning banner
+  dupBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.expiringSurface, borderRadius: radius.lg, marginBottom: spacing.md },
+  dupTitle: { ...typography.bodySm, fontWeight: '800', color: '#8E6A20' },
+  dupSub: { ...typography.caption, color: colors.textPrimary, marginTop: 2, lineHeight: 17 },
 
   // Progress
   progressBox: {

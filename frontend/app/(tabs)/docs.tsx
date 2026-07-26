@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TextInput, FlatList, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Search, FileText, Lock, Calendar as CalIcon, Filter as FilterIcon, X } from 'lucide-react-native';
+import { Search, FileText, Lock, Calendar as CalIcon, Filter as FilterIcon, X, ArrowUpDown } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useVault } from '../../src/contexts/VaultContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -18,6 +18,14 @@ import { hapt } from '../../src/utils/haptics';
 import { CATEGORY_META } from '../../src/constants/categories';
 
 type GroupBy = 'list' | 'month';
+type SortKey = 'name' | 'added' | 'modified' | 'expiry';
+const SORT_LABELS: Record<SortKey, string> = {
+  name: 'Name',
+  added: 'Date added',
+  modified: 'Recently modified',
+  expiry: 'Expiry date',
+};
+const SORT_ORDER: SortKey[] = ['name', 'added', 'modified', 'expiry'];
 
 export default function Docs() {
   const { docs, family, loading } = useVault();
@@ -27,6 +35,7 @@ export default function Docs() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [q, setQ] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('list');
+  const [sortBy, setSortBy] = useState<SortKey>('added');
 
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
@@ -35,8 +44,32 @@ export default function Docs() {
       return true;
     });
     list = applyFilter(list, filter);
-    return list;
-  }, [docs, q, filter]);
+    // Apply sort. Sort is stable and never mutates the source array.
+    const sorted = [...list];
+    switch (sortBy) {
+      case 'name':
+        sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        break;
+      case 'added':
+        sorted.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        break;
+      case 'modified':
+        sorted.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+        break;
+      case 'expiry':
+        // Docs without expiry go to the end.
+        sorted.sort((a, b) => {
+          const ax = a.expiryDate || '';
+          const bx = b.expiryDate || '';
+          if (!ax && !bx) return 0;
+          if (!ax) return 1;
+          if (!bx) return -1;
+          return ax.localeCompare(bx);
+        });
+        break;
+    }
+    return sorted;
+  }, [docs, q, filter, sortBy]);
 
   const grouped = useMemo(() => {
     if (groupBy === 'list') return null;
@@ -163,6 +196,24 @@ export default function Docs() {
         />
       </View>
 
+      {/* Sort chips */}
+      <View style={styles.sortRow} testID="docs-sort-row">
+        <ArrowUpDown color={colors.textTertiary} size={13} strokeWidth={2} />
+        <Text style={styles.sortLabel}>Sort</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+          {SORT_ORDER.map((k) => (
+            <Chip
+              key={k}
+              label={SORT_LABELS[k]}
+              active={sortBy === k}
+              onPress={() => { hapt.selection(); setSortBy(k); }}
+              testID={`sort-${k}`}
+              size="sm"
+            />
+          ))}
+        </ScrollView>
+      </View>
+
       {/* Document List */}
       {filtered.length === 0 ? (
         <EmptyState
@@ -215,7 +266,11 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, ...typography.body, color: colors.textPrimary, padding: 0 },
   
   // Group toggle
-  groupToggle: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.xxl, marginTop: spacing.md, marginBottom: spacing.md },
+  groupToggle: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.xxl, marginTop: spacing.md, marginBottom: spacing.sm },
+
+  // Sort row (additive; does not disturb existing layout)
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.xxl, marginBottom: spacing.md },
+  sortLabel: { ...typography.overline, color: colors.textTertiary, marginRight: 4 },
   
   // Document card
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, ...shadow.xs },

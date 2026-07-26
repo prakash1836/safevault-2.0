@@ -31,6 +31,8 @@ export interface VaultDocument {
   localUri?: string | null; // encrypted file local path (fallback)
   mimeType?: string;
   size?: number;
+  /** SHA-256 hex digest of the raw (pre-encryption) file bytes. Used for duplicate detection. */
+  fileHash?: string;
   encrypted: true;
   issueDate?: string;
   expiryDate?: string;

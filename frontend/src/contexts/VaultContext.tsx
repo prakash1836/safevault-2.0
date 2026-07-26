@@ -183,6 +183,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           localUri,
           mimeType: input.mimeType,
           size: input.size,
+          fileHash: (input as any).fileHash,
           encrypted: true,
           issueDate: input.issueDate,
           expiryDate: input.expiryDate,
