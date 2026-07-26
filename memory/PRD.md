@@ -1,14 +1,18 @@
 # SafeVault — Product Requirements Document
 
 ## Original Problem Statement
-Refine the existing SafeVault React Native (Expo + TypeScript) mobile app to a polished, premium-quality experience — like something built by Google, Notion, Apple, or Dropbox — without changing the navigation flow, architecture, or business logic. Preserve Google Drive integration and authentication. Improve spacing, typography, alignment, icon consistency, buttons, colors, empty/loading/success states, and branding. Add a modern SVG logo, an animated splash under 3s with tagline "Secure. Organize. Never Forget.", and elevate reminders on the dashboard.
+Refine the existing SafeVault React Native (Expo + TypeScript) mobile app to a polished, premium-quality experience — like something built by Google, Notion, Apple, or Dropbox — without changing the navigation flow, architecture, or business logic. After the refinement was approved, deliver Phase 1 MVP features (Document Upload, Document Library, Reminder System) with the same "no redesign, no architectural change" discipline.
 
 ## User Choices Captured
 - Codebase access: use existing code in `/app`
-- Deliverable order: prepare report and implement in the same pass
 - Design direction: "You decide" — premium mobile aesthetic
 - Color palette: **Trust Blue** as default (theme selector remains for user to change later)
 - Logo: SVG-based
+
+Phase 1 adjustments:
+- Task 1 — Reminder storage key `safevault.notifications.map.v1`; default fire time 09:00 local; UI-neutral.
+- Task 2 — Configurable `MAX_UPLOAD_SIZE_MB = 50`; add `uploadProgress` to VaultContext; retry supported; keep extensible for resumable uploads (`RESUMABLE_UPLOAD_THRESHOLD_BYTES` reserved).
+- Task 3 — Sort by Name / Date Added / Recently Modified / Expiry Date; duplicate detection via SHA-256 file hash (fallback: name + size); warning is **non-blocking**.
 
 ## Personas
 - **First-time users** who need document security they can trust at a glance
@@ -17,9 +21,9 @@ Refine the existing SafeVault React Native (Expo + TypeScript) mobile app to a p
 
 ## Architecture (unchanged)
 - Expo Router file-based navigation
-- Contexts: Auth, Vault, Upload, Theme (with runtime preset + custom hex), Permissions
-- Client-side AES-256 encryption before Drive upload (drive.file scope)
-- MongoDB backend (present, minimal use for this UI refinement)
+- Contexts: Auth, Vault, Upload, Theme (runtime preset + custom hex), Permissions
+- Client-side AES-256 encryption before Google Drive upload (drive.file scope)
+- MongoDB backend (present, minimal use for the mobile MVP)
 - Reanimated 3 + Haptics for micro-interactions
 
 ## Core Requirements (Static)
@@ -29,41 +33,72 @@ Refine the existing SafeVault React Native (Expo + TypeScript) mobile app to a p
 - Splash under 3 seconds
 - Theme is user-changeable at any time
 
-## What's Been Implemented (Jan 22, 2026)
-- **`/app/UX_REPORT.md`** — full analysis: strengths, weaknesses, UI inconsistencies, UX improvements, components refined, animations, branding, accessibility, and performance considerations
-- **`src/components/Logo.tsx`** — new SVG SafeVault brandmark (shield silhouette + vault dial + subtle document fold), plus `LogoMonogram` badge variant, with `onDark` mode for dark-hero backgrounds
-- **`app/index.tsx`** — new animated splash: pop-in logo (spring scale), halo glow, "SafeVault" wordmark reveal, tagline "Secure. Organize. Never forget." — total ~1.6s before auto-navigation
-- **`src/constants/theme.ts`** — refined default primary to Trust Blue `#2461E8` / dark `#0F1F52` / surface `#E4ECFB`; navy-tinted premium shadow layers
-- **`src/contexts/ThemeContext.tsx`** — `ocean` preset renamed "Trust Blue" (`#2461E8`) and set as the default (preserving user preference on first launch)
-- **`app/login.tsx`** — uses new `Logo`, updated tagline, refined CTA hierarchy (primary Google button + ghost demo link), staggered feature card reveals
-- **`app/onboarding.tsx`** — shield tile now renders the new `Logo`
-- **`app/(tabs)/_layout.tsx`** — animated pill background under the active tab (spring + fade); FAB has a subtle glow halo; haptic feedback on tab switches
-- **`app/(tabs)/home.tsx`** — new **`PriorityReminderCard`** rendered above the Vault Health card whenever a document is expired or expiring (elevates reminders as the app's stated core value), subtle pulse animation for expired icon; vault ring color made theme-neutral (white on navy)
-- **`app/settings/theme.tsx`** — default custom hex updated to `#2461E8`, swatch palette starts with Trust Blue
-- **`app/upload/type.tsx`** — replaced hardcoded `colors.primary` with the active theme accent; entrance stagger; haptic selection
-- **`app.json`** — native splash background updated from `#000` to `#0F1F52` (matches Trust Blue dark) for a seamless launch → animated splash → app transition
-- Removed all lingering references to the old Forest palette in the default paths
+## What's Been Implemented (Jan/Jul 2026)
+
+### UI Refinement (Complete)
+- `UX_REPORT.md` — full analysis
+- `src/components/Logo.tsx` — new SVG SafeVault brandmark
+- `app/index.tsx` — animated splash (~1.6s)
+- Trust Blue premium theme as default; user can still switch
+- Login, onboarding, tab bar, home dashboard, upload wizard all polished; no redesign
+
+### Bug Fixes (Complete)
+- `AuthContext.tsx` — SignInResponse discriminated-union narrowing for `@react-native-google-signin/google-signin` v16
+- `VaultContext.tsx` — reminder ID map persisted at `safevault.notifications.map.v1`; re-scheduled on `updateDoc`; default fire hour = 9:00 local
+
+### Phase 1 — Document Upload / Library / Reminders (Complete)
+
+**Task 1 — Reminder System hardening** ✅ verified (`iteration_5.json` 100%)
+- `services/notifications.ts` — exported `DEFAULT_REMINDER_HOUR = 9`; `scheduleReminders` accepts optional `atHour`; every reminder normalised to that local hour via `date-fns setHours/setMinutes/setSeconds/setMilliseconds`.
+- `services/storage.ts` — new `NOTIF_MAP` key `safevault.notifications.map.v1`; `getReminderMap()` / `setReminderMap()`.
+- `contexts/VaultContext.tsx` — `hydrateReminderStore()`, `persistReminderStore()`, `setRemindersFor()`, `clearRemindersFor()` helpers. `updateDoc` now detects `expiryDate`, `reminder.*`, or `name` change and re-schedules.
+
+**Task 2 — Document Upload progress + guardrails** ✅ verified (`iteration_6.json` 100%)
+- `constants/upload.ts` — `MAX_UPLOAD_SIZE_MB = 50`, `MAX_UPLOAD_SIZE_BYTES`, `RESUMABLE_UPLOAD_THRESHOLD_BYTES` (reserved for future resumable engine).
+- `services/drive.ts` — `UploadOptions { onProgress?, signal? }`; `uploadToDrive` uses `XMLHttpRequest.upload.onprogress` when available, falls back to `fetch`. Demo/anonymous path also emits 0→1 progress ticks.
+- `contexts/VaultContext.tsx` — `uploadProgress: number` exposed; reset to 0 on start; wired via `onProgress` callback.
+- `app/upload/file.tsx` — both `pickAnyFile` and `pickImage` reject over-limit files with a friendly Alert citing actual MB and the limit.
+- `app/upload/review.tsx` — additive progress box (testIDs `review-progress-box`, `review-progress-pct`); button label switches to `Uploading… NN%` while active and `Retry upload` after failure.
+
+**Task 3 — Document Library polish** ✅ verified (`iteration_8.json` 100% after fixing 2 items in `iteration_7`)
+- `types/index.ts` — `VaultDocument.fileHash?: string`.
+- `contexts/UploadContext.tsx` — `UploadDraft.fileHash: string | null`.
+- `app/upload/file.tsx` — `sha256OfBase64` helper; all three pickers (`pickAnyFile`, `pickImage`, `useSample`) populate `fileHash` in the draft.
+- `contexts/VaultContext.tsx` — `addDoc` persists `fileHash` on the new document.
+- `app/upload/review.tsx` — non-blocking duplicate warning (testID `review-duplicate-warning`): prefers hash match, falls back to name-lowercase + size match; primary CTA is **never** disabled by this warning.
+- `app/(tabs)/docs.tsx` — additive sort chip row (testID `docs-sort-row`) with `sort-name`, `sort-added`, `sort-modified`, `sort-expiry`; layout uses a flex-1 wrapper around the horizontal ScrollView so the "Sort" label never overlaps.
 
 ## Prioritized Backlog / Next Tasks
-- **P1**: Fix pre-existing TypeScript type errors in `src/contexts/AuthContext.tsx` (SignInResponse `user` field mismatch) — not blocking; unrelated to UI refinement
-- **P2**: Optional custom font (e.g. Bricolage Grotesque via `expo-font`) for a more distinctive brand voice
-- **P2**: Add subtle SVG illustrations to the `EmptyState` component (currently uses icon disc)
-- **P2**: Confetti-lite on successful upload
-- **P3**: Localize copy (currently English only)
+### Phase 2 (not started)
+- Google Drive Storage Engine — real Drive folder layout, per-user vault folder, resumable uploads > 5 MB via `RESUMABLE_UPLOAD_THRESHOLD_BYTES` route
+- Metadata Management — server-side manifest for cross-device
+- Folder Management
+- Synchronization
 
-## Files Touched (visual/theme layer only)
-- `/app/UX_REPORT.md` (new)
-- `/app/frontend/src/components/Logo.tsx` (new)
-- `/app/frontend/src/constants/theme.ts` (modified)
-- `/app/frontend/src/contexts/ThemeContext.tsx` (modified)
-- `/app/frontend/app/index.tsx` (rewritten — animated splash)
-- `/app/frontend/app/login.tsx` (modified)
-- `/app/frontend/app/onboarding.tsx` (modified)
-- `/app/frontend/app/(tabs)/_layout.tsx` (rewritten — active pill)
-- `/app/frontend/app/(tabs)/home.tsx` (modified — Priority Reminder card)
-- `/app/frontend/app/(tabs)/profile.tsx` (minor: fallback label)
-- `/app/frontend/app/settings/theme.tsx` (minor: default hex + swatch order)
-- `/app/frontend/app/upload/type.tsx` (fixed theme wiring)
-- `/app/frontend/app.json` (splash background)
+### Phase 3 (not started)
+- OCR
+- Security hardening (key rotation, PIN, biometric unlock)
 
-Business logic, encryption, drive service, authentication, storage, notifications, and navigation flow — **untouched**.
+### Low-priority follow-ups from Phase 1 test reports
+- (from `iteration_6`) On web only, both the Drive path and the local-fallback path fail because `expo-file-system.getInfoAsync` isn't implemented on web. Consider `Platform.OS !== 'web'` guarding the local fallback.
+- (from `iteration_6`) Reset `uploadProgress` to 0 on `clearUploadError()` for extra clarity.
+- (from `iteration_7`) VaultContext.addDoc uses `(input as any).fileHash` — could be typed cleanly into the Omit signature.
+
+## Files Touched in Phase 1
+- `/app/frontend/src/constants/upload.ts` (new)
+- `/app/frontend/src/services/notifications.ts`
+- `/app/frontend/src/services/storage.ts`
+- `/app/frontend/src/services/drive.ts`
+- `/app/frontend/src/contexts/VaultContext.tsx`
+- `/app/frontend/src/contexts/UploadContext.tsx`
+- `/app/frontend/src/types/index.ts`
+- `/app/frontend/app/upload/file.tsx`
+- `/app/frontend/app/upload/review.tsx`
+- `/app/frontend/app/(tabs)/docs.tsx`
+
+## Test Reports
+- `iteration_4.json` — AuthContext TS fix (100%)
+- `iteration_5.json` — Task 1 (100%)
+- `iteration_6.json` — Task 2 (100%)
+- `iteration_7.json` — Task 3 initial (90%, 1 HIGH + 1 design nit)
+- `iteration_8.json` — Task 3 retest (100%, all resolved)
