@@ -22,6 +22,8 @@ export interface DocReminder {
   days1: boolean;
 }
 
+export type SyncState = 'pending-upload' | 'uploading' | 'synced' | 'failed' | 'deleted';
+
 export interface VaultDocument {
   id: string;
   name: string;
@@ -31,7 +33,13 @@ export interface VaultDocument {
   localUri?: string | null; // encrypted file local path (fallback)
   mimeType?: string;
   size?: number;
+  /** SHA-256 hex digest of the raw (pre-encryption) file bytes. Used for duplicate detection. */
+  fileHash?: string;
   encrypted: true;
+  /** Current sync state — driven by UploadCoordinator (Sprint 3). Defaults to 'synced'. */
+  syncState?: SyncState;
+  /** Last upload error message, if syncState === 'failed'. */
+  syncError?: string | null;
   issueDate?: string;
   expiryDate?: string;
   notes?: string;

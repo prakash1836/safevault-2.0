@@ -19,11 +19,11 @@ export const colors = {
   textOnDarkMuted: 'rgba(255,255,255,0.62)',
   textOnDarkSubtle: 'rgba(255,255,255,0.42)',
 
-  // Default accent (forest) — overridden by ThemeContext at runtime
-  primary: '#4A7D6A',
-  primaryHover: '#3B6655',
-  primarySurface: '#E5EFEA',
-  dark: '#1C3F3A',
+  // Default accent (trust blue) — overridden by ThemeContext at runtime
+  primary: '#2461E8',
+  primaryHover: '#1D50C4',
+  primarySurface: '#E4ECFB',
+  dark: '#0F1F52',
 
   // Status (universal — stays constant across themes)
   valid: '#4A7D6A',
@@ -58,14 +58,14 @@ export const radius = {
   pill: 999,
 };
 
-// Premium layered shadows
+// Premium layered shadows — cool navy tint that reads well on both blue & neutral bases
 export const shadow = {
   none: {},
-  xs: { shadowColor: '#1C3F3A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
-  sm: { shadowColor: '#1C3F3A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
-  md: { shadowColor: '#1C3F3A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 18, elevation: 4 },
-  lg: { shadowColor: '#1C3F3A', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 28, elevation: 8 },
-  hero: { shadowColor: '#000', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.22, shadowRadius: 28, elevation: 12 },
+  xs: { shadowColor: '#0F1F52', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+  sm: { shadowColor: '#0F1F52', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
+  md: { shadowColor: '#0F1F52', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.10, shadowRadius: 20, elevation: 4 },
+  lg: { shadowColor: '#0F1F52', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.14, shadowRadius: 30, elevation: 8 },
+  hero: { shadowColor: '#000', shadowOffset: { width: 0, height: 18 }, shadowOpacity: 0.22, shadowRadius: 34, elevation: 14 },
 };
 
 // Typography scale

@@ -99,17 +99,23 @@ const loginGoogle = useCallback(async (): Promise<{ ok: boolean; reason?: string
         await GoogleSignin.hasPlayServices();
 
         console.log("Play Services OK");
-        const user = await GoogleSignin.signIn();
-        console.log("User signed in:", user);
+        const signInResult = await GoogleSignin.signIn();
+        console.log("User signed in:", signInResult);
+
+        if (signInResult.type !== 'success') {
+            return { ok: false, reason: 'cancelled' };
+        }
+
+        const gUser = signInResult.data.user;
         const tokens = await GoogleSignin.getTokens();
 
         const accessToken = tokens.accessToken;
 
        const u: AuthUser = {
-            id: user.user.id,
-            email: user.user.email,
-            name: user.user.name ?? '',
-            picture: user.user.photo ?? undefined,
+            id: gUser.id,
+            email: gUser.email,
+            name: gUser.name ?? '',
+            picture: gUser.photo ?? undefined,
             accessToken,
             demo: false,
         };

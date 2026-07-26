@@ -7,6 +7,7 @@ import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useVault } from '../../src/contexts/VaultContext';
+import { useAuth } from '../../src/contexts/AuthContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { Card, StatusBadge, PrimaryButton, IconButton, Chip } from '../../src/components/UI';
 import { PressableScale } from '../../src/components/PressableScale';
@@ -14,13 +15,13 @@ import { EncryptedImagePreview } from '../../src/components/EncryptedImagePrevie
 import { SkeletonHero, SkeletonRow } from '../../src/components/Skeleton';
 import { colors, radius, spacing, typography, shadow } from '../../src/constants/theme';
 import { fmtDate, getDocStatus, daysUntil } from '../../src/utils/date';
-import { getKey, decryptToBase64 } from '../../src/services/encryption';
-import { readEncryptedLocal } from '../../src/services/drive';
+import { getDocumentContent } from '../../src/services/documentContent';
 import { hapt } from '../../src/utils/haptics';
 
 export default function DocDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { docs, family, deleteDoc, updateDoc, loading } = useVault();
+  const { user } = useAuth();
   const t = useTheme();
   const router = useRouter();
   const doc = docs.find((d) => d.id === id);
@@ -79,15 +80,16 @@ export default function DocDetail() {
     hapt.light();
     setDownloading(true);
     try {
-      const key = await getKey();
-      if (!key) throw new Error('Missing encryption key');
-      let cipher = '';
-      if (doc.localUri) cipher = await readEncryptedLocal(doc.localUri);
-      const b64 = decryptToBase64(cipher, key);
+      // Cache-first, integrity-verified. Downloads from Drive only when the
+      // local cache is missing or unreadable.
+      const result = await getDocumentContent(user!, doc);
       const ext = doc.mimeType?.includes('pdf') ? 'pdf' : doc.mimeType?.includes('png') ? 'png' : doc.mimeType?.includes('jpeg') ? 'jpg' : 'bin';
       const out = (FileSystem.documentDirectory || '') + `safevault_export_${doc.id}.${ext}`;
-      await FileSystem.writeAsStringAsync(out, b64, { encoding: FileSystem.EncodingType.Base64 });
+      await FileSystem.writeAsStringAsync(out, result.base64, { encoding: FileSystem.EncodingType.Base64 });
       hapt.success();
+      if (result.integrityWarning) {
+        Alert.alert('Integrity warning', `${result.integrityWarning}\n\nThe file has been decrypted, but its contents may have changed since it was saved.`);
+      }
       await Share.share({ url: out, message: doc.name });
     } catch (e: any) {
       hapt.error();

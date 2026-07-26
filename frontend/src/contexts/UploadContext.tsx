@@ -8,6 +8,8 @@ export interface UploadDraft {
   fileName: string | null;
   mimeType: string | null;
   size: number | null;
+  /** SHA-256 hex digest of the raw file bytes; used for duplicate detection. */
+  fileHash: string | null;
   ownerId: string;
   issueDate: string | null;
   expiryDate: string | null;
@@ -22,6 +24,7 @@ const EMPTY: UploadDraft = {
   fileName: null,
   mimeType: null,
   size: null,
+  fileHash: null,
   ownerId: 'me',
   issueDate: null,
   expiryDate: null,

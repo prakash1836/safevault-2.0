@@ -6,12 +6,20 @@ import { UploadCloud, ImageIcon, FileText, Lock, Repeat, FileSpreadsheet } from 
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import CryptoJS from 'crypto-js';
 import { Stepper } from '../../src/components/Stepper';
 import { UploadHeader } from '../../src/components/UploadHeader';
 import { useUpload } from '../../src/contexts/UploadContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { PrimaryButton } from '../../src/components/UI';
 import { colors, radius, spacing } from '../../src/constants/theme';
+import { MAX_UPLOAD_SIZE_MB, MAX_UPLOAD_SIZE_BYTES } from '../../src/constants/upload';
+
+/** SHA-256 hex digest of a base64-encoded payload (raw file bytes). */
+function sha256OfBase64(b64: string): string {
+  const wa = CryptoJS.enc.Base64.parse(b64);
+  return CryptoJS.SHA256(wa).toString(CryptoJS.enc.Hex);
+}
 
 export default function FileStep() {
   const { draft, setDraft } = useUpload();
@@ -25,12 +33,20 @@ export default function FileStep() {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (res.canceled) return;
       const a = res.assets[0];
+      if (a.size && a.size > MAX_UPLOAD_SIZE_BYTES) {
+        Alert.alert(
+          'File is too large',
+          `“${a.name}” is ${(a.size / (1024 * 1024)).toFixed(1)} MB. SafeVault currently supports files up to ${MAX_UPLOAD_SIZE_MB} MB per upload.`
+        );
+        return;
+      }
       const b64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
       setDraft({
         fileBase64: b64,
         fileName: a.name,
         mimeType: a.mimeType || guessMime(a.name),
         size: a.size || b64.length,
+        fileHash: sha256OfBase64(b64),
         name: draft.name || a.name.replace(/\.[^.]+$/, ''),
       });
     } catch (e: any) {
@@ -46,6 +62,14 @@ export default function FileStep() {
       const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.85 });
       if (res.canceled) return;
       const a = res.assets[0];
+      const sizeGuess = a.fileSize || (a.base64 ? Math.ceil((a.base64.length * 3) / 4) : 0);
+      if (sizeGuess > MAX_UPLOAD_SIZE_BYTES) {
+        Alert.alert(
+          'Image is too large',
+          `This image is about ${(sizeGuess / (1024 * 1024)).toFixed(1)} MB. SafeVault currently supports files up to ${MAX_UPLOAD_SIZE_MB} MB per upload.`
+        );
+        return;
+      }
       const b64 = a.base64 || (await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 }));
       const isPng = (a.mimeType || '').includes('png');
       const nm = (a.fileName || `image_${Date.now()}`) + (isPng ? '.png' : '.jpg');
@@ -54,6 +78,7 @@ export default function FileStep() {
         fileName: nm,
         mimeType: a.mimeType || 'image/jpeg',
         size: a.fileSize || b64.length,
+        fileHash: sha256OfBase64(b64),
         name: draft.name || nm.replace(/\.[^.]+$/, ''),
       });
     } catch (e: any) {
@@ -69,12 +94,13 @@ export default function FileStep() {
       fileName: 'sample.txt',
       mimeType: 'text/plain',
       size: text.length,
+      fileHash: sha256OfBase64(b64),
       name: draft.name || 'Sample Document',
     });
   };
 
   const replace = () => {
-    setDraft({ fileBase64: null, fileName: null, mimeType: null, size: null });
+    setDraft({ fileBase64: null, fileName: null, mimeType: null, size: null, fileHash: null });
   };
 
   const proceed = () => router.push('/upload/details');

@@ -1,0 +1,20 @@
+{
+  "summary": "Task 3 retest (iteration_7 fixes verified). tsc --noEmit --skipLibCheck exit 0. Static-inspected /app/frontend/app/upload/file.tsx: pickAnyFile now includes `fileHash: sha256OfBase64(b64)` between size and name inside setDraft (line 49). Static-inspected /app/frontend/app/(tabs)/docs.tsx sort row: testID docs-sort-row present (L200); horizontal ScrollView wrapped in <View style={{flex:1}}> (L203-216); contentContainerStyle includes paddingRight: spacing.md (L204); all four sort-* testIDs (name/added/modified/expiry) rendered. E2E via http://localhost:8081 at 420x900: splash -> login-demo-btn -> onboarding-continue-btn -> tab-docs -> all four sort chips tappable and visible without overlap (label 'Sort' right edge 72.2px, first chip sort-name left edge 82.2px -> ~10px gap, no overlap). Sort-name -> 'Car Insurance' first. Sort-added -> 'Passport' first. Sort-expiry -> 'Driving License' first, 'School Records - Aarav' last. Sort-modified clickable. docs-search-input, docs-filter-btn, docs-group-toggle, group-list, group-month, doc-card-* all functional. No compile/bundle regressions.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (frontend-only)", "frontend": "100%" },
+  "test_credentials": "Demo mode via login-demo-btn (no credentials required)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration_7 issues resolved: (a) fileHash now set in pickAnyFile setDraft; (b) sort label/ScrollView no longer overlap due to flex:1 wrapper + paddingRight. Duplicate-warning banner remains untested via web sample path (pre-existing expo-file-system web limitation, per iteration_6/7 - static verification already done). Do not retest Task 1/Task 2 flows.",
+  "rca of the issue": "N/A - fixes verified successful"
+}

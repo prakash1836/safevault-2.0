@@ -2,9 +2,10 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import type { VaultDocument, VaultEvent, FamilyMember, DriveUsage } from '../types';
 import { storage } from '../services/storage';
 import { useAuth } from './AuthContext';
-import { getKey, encryptBase64 } from '../services/encryption';
-import { uploadToDrive, deleteFromDrive, fetchDriveQuota, saveEncryptedLocal } from '../services/drive';
+import { deleteFromDrive, fetchDriveQuota } from '../services/drive';
 import { scheduleReminders, cancelAllForId, initNotifications } from '../services/notifications';
+import { Migration } from '../services/migration';
+import { UploadCoordinator, type CoordinatorEvent } from '../services/uploadCoordinator';
 import { getDocStatus } from '../utils/date';
 import { addDays } from 'date-fns';
 
@@ -16,6 +17,8 @@ interface VaultCtx {
   loading: boolean;
   uploading: boolean;
   uploadError: string | null;
+  /** Current upload progress in the range [0, 1]. Resets to 0 when a new upload starts. */
+  uploadProgress: number;
   addDoc: (
     input: Omit<VaultDocument, 'id' | 'createdAt' | 'updatedAt' | 'encrypted' | 'fileId'> & { fileBase64: string }
   ) => Promise<VaultDocument>;
@@ -34,6 +37,38 @@ interface VaultCtx {
 
 const reminderIdsStore = new Map<string, string[]>();
 
+/**
+ * Load the persisted reminder map from AsyncStorage into the in-memory `reminderIdsStore`.
+ * Called once on user login. Ensures cancellations survive app restarts.
+ */
+async function hydrateReminderStore() {
+  try {
+    const persisted = await storage.getReminderMap();
+    reminderIdsStore.clear();
+    for (const [k, v] of Object.entries(persisted)) reminderIdsStore.set(k, v);
+  } catch {}
+}
+
+/** Serialize the in-memory reminderIdsStore back to AsyncStorage. */
+async function persistReminderStore() {
+  const obj: Record<string, string[]> = {};
+  for (const [k, v] of reminderIdsStore.entries()) obj[k] = v;
+  try { await storage.setReminderMap(obj); } catch {}
+}
+
+async function setRemindersFor(id: string, ids: string[]) {
+  if (ids.length === 0) reminderIdsStore.delete(id);
+  else reminderIdsStore.set(id, ids);
+  await persistReminderStore();
+}
+
+async function clearRemindersFor(id: string) {
+  const existing = reminderIdsStore.get(id);
+  if (existing && existing.length) await cancelAllForId(existing);
+  reminderIdsStore.delete(id);
+  await persistReminderStore();
+}
+
 const VaultContext = createContext<VaultCtx | null>(null);
 
 export function VaultProvider({ children }: { children: React.ReactNode }) {
@@ -45,6 +80,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   useEffect(() => {
     if (!user) {
@@ -58,6 +94,20 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       try {
         await initNotifications();
+        await hydrateReminderStore();
+        // One-time storage migration to SQLite. Idempotent, guarded by a flag.
+        // Never throws — logs and continues. VaultContext reads still come from
+        // AsyncStorage until Sprint 3 wires the SQLite/manifest path.
+        try {
+          const res = await Migration.runIfNeeded();
+          if (res.ranMigration) {
+            // eslint-disable-next-line no-console
+            console.log('[migration] v2 completed:', res);
+          }
+        } catch (mErr) {
+          // eslint-disable-next-line no-console
+          console.warn('[migration] failed (non-fatal):', mErr);
+        }
         const [d, e, f, dr, seeded] = await Promise.all([
           storage.getDocs(),
           storage.getEvents(),
@@ -94,6 +144,40 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [user]);
 
+  // Wire the UploadCoordinator to the auth session and subscribe to sync-state
+  // transitions. Emits patches into local docs[] state so the priority-reminder
+  // card and other consumers reflect Synced / Failed / Pending on the fly.
+  useEffect(() => {
+    UploadCoordinator.setUser(user || null);
+    const unsub = UploadCoordinator.subscribe((ev: CoordinatorEvent) => {
+      // Skip progress-only frames during an active upload — they update state
+      // in-memory only. Terminal transitions (synced/failed/pending/deleted)
+      // and the first 'uploading' notice do get persisted. This keeps
+      // AsyncStorage writes bounded when a large file streams to Drive.
+      const isProgressFrame = ev.state === 'uploading' && typeof ev.progress === 'number' && ev.progress > 0 && ev.progress < 1;
+      setDocs((cur) => {
+        const idx = cur.findIndex((d) => d.id === ev.docId);
+        if (idx < 0) return cur;
+        const doc = cur[idx];
+        const patched: VaultDocument = {
+          ...doc,
+          syncState: ev.state,
+          syncError: ev.error ?? (ev.state === 'synced' ? null : doc.syncError ?? null),
+          fileId: ev.fileId !== undefined ? ev.fileId : doc.fileId,
+          localUri: ev.localUri !== undefined ? ev.localUri : doc.localUri,
+          updatedAt: new Date().toISOString(),
+        };
+        const next = [...cur];
+        next[idx] = patched;
+        if (!isProgressFrame) {
+          void storage.setDocs(next).catch(() => {});
+        }
+        return next;
+      });
+    });
+    return () => { unsub(); };
+  }, [user]);
+
   const clearUploadError = useCallback(() => setUploadError(null), []);
 
   const addDoc: VaultCtx['addDoc'] = useCallback(
@@ -101,67 +185,64 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       if (!user) throw new Error('Not logged in');
       setUploading(true);
       setUploadError(null);
-      
+      setUploadProgress(0);
+
       try {
-        const key = await getKey();
-        if (!key) throw new Error('Missing encryption key. Please log out and log in again.');
-        
-        // Encrypt the file
-        const cipher = encryptBase64(input.fileBase64, key);
-        
-        // Upload to Drive or save locally
-        let fileId: string;
-        let localUri: string | null = null;
-        
-        try {
-          fileId = await uploadToDrive(user, input.name, cipher, input.mimeType || 'application/octet-stream');
-          // For demo mode, fileId is the local file ID
-          if (user.demo || fileId.startsWith('demo_')) {
-            localUri = `${fileId}`;
-          }
-        } catch (uploadErr: any) {
-          console.warn('Drive upload failed, saving locally:', uploadErr);
-          // Fallback to local storage
-          const fakeId = 'local_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-          await saveEncryptedLocal(fakeId, cipher);
-          fileId = fakeId;
-          localUri = fakeId;
-        }
-        
         const now = new Date().toISOString();
         const id = 'doc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+        // Delegate encrypt + local save + SQLite + queue enqueue + best-effort
+        // immediate upload to the UploadCoordinator. This guarantees the doc is
+        // durable on-device BEFORE any network work; a network failure leaves
+        // the doc queued for retry (never lost).
+        const submit = await UploadCoordinator.submit({
+          doc: {
+            id,
+            name: input.name,
+            category: input.category,
+            ownerId: input.ownerId,
+            mimeType: input.mimeType,
+            size: input.size,
+            fileHash: (input as any).fileHash,
+            issueDate: input.issueDate,
+            expiryDate: input.expiryDate,
+            notes: input.notes,
+            reminder: input.reminder,
+            createdAt: now,
+            updatedAt: now,
+            fileBase64: input.fileBase64,
+          },
+          onProgress: (p) => setUploadProgress(p),
+        });
+
+        // Compose the VaultDocument that reflects the immediate attempt outcome.
         const doc: VaultDocument = {
-          id,
-          name: input.name,
-          category: input.category,
-          ownerId: input.ownerId,
-          fileId,
-          localUri,
-          mimeType: input.mimeType,
-          size: input.size,
-          encrypted: true,
-          issueDate: input.issueDate,
-          expiryDate: input.expiryDate,
-          notes: input.notes,
-          reminder: input.reminder,
-          createdAt: now,
-          updatedAt: now,
+          ...submit.doc,
+          fileId: submit.attempt.status === 'synced' ? submit.attempt.fileId : null,
+          syncState: submit.attempt.status === 'synced' ? 'synced' : 'pending-upload',
+          syncError: submit.attempt.status === 'pending' ? submit.attempt.error : null,
         };
-        
+
         const next = [doc, ...docs];
         setDocs(next);
         await storage.setDocs(next);
-        
-        // Schedule reminders
+
+        // Schedule reminders (unchanged from Phase 1).
         if (doc.expiryDate) {
           try {
             const ids = await scheduleReminders(doc.id, doc.name, doc.expiryDate, doc.reminder);
-            reminderIdsStore.set(doc.id, ids);
+            await setRemindersFor(doc.id, ids);
           } catch (e) {
             console.warn('Failed to schedule reminders:', e);
           }
         }
-        
+
+        if (submit.attempt.status === 'pending') {
+          // Doc is safe locally + queued for later retry.
+          setUploadError(null); // don't surface — background will retry
+        } else {
+          setUploadProgress(1);
+        }
         return doc;
       } catch (e: any) {
         const msg = e?.message || 'Upload failed';
@@ -176,9 +257,33 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
   const updateDoc: VaultCtx['updateDoc'] = useCallback(
     async (id, patch) => {
-      const next = docs.map((d) => (d.id === id ? { ...d, ...patch, updatedAt: new Date().toISOString() } : d));
+      const prev = docs.find((d) => d.id === id);
+      const nextDoc = prev ? { ...prev, ...patch, updatedAt: new Date().toISOString() } : null;
+      const next = docs.map((d) => (d.id === id ? (nextDoc as VaultDocument) : d));
       setDocs(next);
       await storage.setDocs(next);
+
+      // Re-schedule reminders when anything reminder-relevant changed on a doc that still has an expiry.
+      if (prev && nextDoc) {
+        const expiryChanged  = (prev.expiryDate || null) !== (nextDoc.expiryDate || null);
+        const flagsChanged   =
+          prev.reminder.days30 !== nextDoc.reminder.days30 ||
+          prev.reminder.days7  !== nextDoc.reminder.days7  ||
+          prev.reminder.days1  !== nextDoc.reminder.days1;
+        const nameChanged    = prev.name !== nextDoc.name;
+
+        if (expiryChanged || flagsChanged || nameChanged) {
+          await clearRemindersFor(nextDoc.id);
+          if (nextDoc.expiryDate) {
+            try {
+              const ids = await scheduleReminders(nextDoc.id, nextDoc.name, nextDoc.expiryDate, nextDoc.reminder);
+              await setRemindersFor(nextDoc.id, ids);
+            } catch (err) {
+              console.warn('Failed to re-schedule reminders on update:', err);
+            }
+          }
+        }
+      }
     },
     [docs]
   );
@@ -190,16 +295,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const next = docs.filter((d) => d.id !== id);
       setDocs(next);
       await storage.setDocs(next);
+      // Cancel any pending queued uploads for this doc first — otherwise the
+      // coordinator could resurrect it seconds later on the retry loop.
+      try { await UploadCoordinator.cancelForDoc(id); } catch {}
       if (doc?.fileId) {
         try {
           await deleteFromDrive(user, doc.fileId, doc.localUri);
         } catch {}
       }
-      const nids = reminderIdsStore.get(id);
-      if (nids) {
-        await cancelAllForId(nids);
-        reminderIdsStore.delete(id);
-      }
+      await clearRemindersFor(id);
     },
     [user, docs]
   );
@@ -212,7 +316,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       setEvents(next);
       await storage.setEvents(next);
       const ids = await scheduleReminders(ev.id, ev.title, ev.date, ev.reminder);
-      reminderIdsStore.set(ev.id, ids);
+      await setRemindersFor(ev.id, ids);
     },
     [events]
   );
@@ -222,11 +326,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const next = events.filter((e) => e.id !== id);
       setEvents(next);
       await storage.setEvents(next);
-      const nids = reminderIdsStore.get(id);
-      if (nids) {
-        await cancelAllForId(nids);
-        reminderIdsStore.delete(id);
-      }
+      await clearRemindersFor(id);
     },
     [events]
   );
@@ -296,6 +396,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         loading,
         uploading,
         uploadError,
+        uploadProgress,
         addDoc,
         updateDoc,
         deleteDoc,
@@ -342,6 +443,8 @@ function buildSeed() {
     fileId: null,
     localUri: null,
     encrypted: true,
+    syncState: 'synced',
+    syncError: null,
     mimeType: 'application/pdf',
     issueDate: addDays(now, -120).toISOString(),
     expiryDate: expiresInDays == null ? undefined : addDays(now, expiresInDays).toISOString(),
