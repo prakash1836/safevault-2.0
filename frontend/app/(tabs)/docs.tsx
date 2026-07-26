@@ -200,18 +200,20 @@ export default function Docs() {
       <View style={styles.sortRow} testID="docs-sort-row">
         <ArrowUpDown color={colors.textTertiary} size={13} strokeWidth={2} />
         <Text style={styles.sortLabel}>Sort</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
-          {SORT_ORDER.map((k) => (
-            <Chip
-              key={k}
-              label={SORT_LABELS[k]}
-              active={sortBy === k}
-              onPress={() => { hapt.selection(); setSortBy(k); }}
-              testID={`sort-${k}`}
-              size="sm"
-            />
-          ))}
-        </ScrollView>
+        <View style={{ flex: 1 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.md }}>
+            {SORT_ORDER.map((k) => (
+              <Chip
+                key={k}
+                label={SORT_LABELS[k]}
+                active={sortBy === k}
+                onPress={() => { hapt.selection(); setSortBy(k); }}
+                testID={`sort-${k}`}
+                size="sm"
+              />
+            ))}
+          </ScrollView>
+        </View>
       </View>
 
       {/* Document List */}

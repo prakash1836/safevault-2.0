@@ -46,6 +46,7 @@ export default function FileStep() {
         fileName: a.name,
         mimeType: a.mimeType || guessMime(a.name),
         size: a.size || b64.length,
+        fileHash: sha256OfBase64(b64),
         name: draft.name || a.name.replace(/\.[^.]+$/, ''),
       });
     } catch (e: any) {
