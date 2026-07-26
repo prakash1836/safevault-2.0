@@ -8,6 +8,7 @@ const K = {
   USER: 'safevault.user',
   DRIVE: 'safevault.drive',
   SEEDED: 'safevault.seeded.v1',
+  NOTIF_MAP: 'safevault.notifications.map.v1',
 };
 
 async function getJSON<T>(key: string, fallback: T): Promise<T> {
@@ -45,6 +46,12 @@ export const storage = {
   getDrive: (): Promise<DriveUsage> =>
     getJSON(K.DRIVE, { total: 15 * 1024 * 1024 * 1024, used: 0, vault: 0 }),
   setDrive: (d: DriveUsage) => setJSON(K.DRIVE, d),
+
+  // Notification ID map: keyed by doc/event id -> string[] of scheduled Expo notification IDs.
+  // Persisted so cancellations survive app restarts.
+  getReminderMap: (): Promise<Record<string, string[]>> =>
+    getJSON<Record<string, string[]>>(K.NOTIF_MAP, {}),
+  setReminderMap: (m: Record<string, string[]>) => setJSON(K.NOTIF_MAP, m),
 
   // Seeded flag
   isSeeded: async (): Promise<boolean> => (await AsyncStorage.getItem(K.SEEDED)) === '1',

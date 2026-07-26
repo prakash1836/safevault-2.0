@@ -1,8 +1,11 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { differenceInSeconds, parseISO, subDays } from 'date-fns';
+import { differenceInSeconds, parseISO, setHours, setMinutes, setSeconds, setMilliseconds, subDays } from 'date-fns';
 
 let configured = false;
+
+// Default local hour that reminders fire at (24h).
+export const DEFAULT_REMINDER_HOUR = 9;
 
 export async function initNotifications() {
   if (configured) return;
@@ -27,19 +30,28 @@ export async function initNotifications() {
   } catch {}
 }
 
+/**
+ * Schedule reminders at 30 / 7 / 1 day(s) before `dateISO`.
+ * Fires at `atHour` local time (defaults to 9:00 AM). Past points are skipped.
+ * Returns the list of Expo notification IDs (persist alongside the doc/event id).
+ */
 export async function scheduleReminders(
   id: string,
   title: string,
   dateISO: string,
-  opts: { days30: boolean; days7: boolean; days1: boolean }
+  opts: { days30: boolean; days7: boolean; days1: boolean },
+  atHour: number = DEFAULT_REMINDER_HOUR
 ): Promise<string[]> {
   const ids: string[] = [];
   const target = parseISO(dateISO);
   const now = new Date();
+
+  const atLocalTime = (d: Date) => setMilliseconds(setSeconds(setMinutes(setHours(d, atHour), 0), 0), 0);
+
   const points: { when: Date; label: string }[] = [];
-  if (opts.days30) points.push({ when: subDays(target, 30), label: '30 days left' });
-  if (opts.days7) points.push({ when: subDays(target, 7), label: '7 days left' });
-  if (opts.days1) points.push({ when: subDays(target, 1), label: 'Tomorrow' });
+  if (opts.days30) points.push({ when: atLocalTime(subDays(target, 30)), label: '30 days left' });
+  if (opts.days7)  points.push({ when: atLocalTime(subDays(target, 7)),  label: '7 days left' });
+  if (opts.days1)  points.push({ when: atLocalTime(subDays(target, 1)),  label: 'Tomorrow' });
 
   for (const p of points) {
     const secs = differenceInSeconds(p.when, now);

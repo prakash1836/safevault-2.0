@@ -34,6 +34,38 @@ interface VaultCtx {
 
 const reminderIdsStore = new Map<string, string[]>();
 
+/**
+ * Load the persisted reminder map from AsyncStorage into the in-memory `reminderIdsStore`.
+ * Called once on user login. Ensures cancellations survive app restarts.
+ */
+async function hydrateReminderStore() {
+  try {
+    const persisted = await storage.getReminderMap();
+    reminderIdsStore.clear();
+    for (const [k, v] of Object.entries(persisted)) reminderIdsStore.set(k, v);
+  } catch {}
+}
+
+/** Serialize the in-memory reminderIdsStore back to AsyncStorage. */
+async function persistReminderStore() {
+  const obj: Record<string, string[]> = {};
+  for (const [k, v] of reminderIdsStore.entries()) obj[k] = v;
+  try { await storage.setReminderMap(obj); } catch {}
+}
+
+async function setRemindersFor(id: string, ids: string[]) {
+  if (ids.length === 0) reminderIdsStore.delete(id);
+  else reminderIdsStore.set(id, ids);
+  await persistReminderStore();
+}
+
+async function clearRemindersFor(id: string) {
+  const existing = reminderIdsStore.get(id);
+  if (existing && existing.length) await cancelAllForId(existing);
+  reminderIdsStore.delete(id);
+  await persistReminderStore();
+}
+
 const VaultContext = createContext<VaultCtx | null>(null);
 
 export function VaultProvider({ children }: { children: React.ReactNode }) {
@@ -58,6 +90,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       try {
         await initNotifications();
+        await hydrateReminderStore();
         const [d, e, f, dr, seeded] = await Promise.all([
           storage.getDocs(),
           storage.getEvents(),
@@ -156,7 +189,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         if (doc.expiryDate) {
           try {
             const ids = await scheduleReminders(doc.id, doc.name, doc.expiryDate, doc.reminder);
-            reminderIdsStore.set(doc.id, ids);
+            await setRemindersFor(doc.id, ids);
           } catch (e) {
             console.warn('Failed to schedule reminders:', e);
           }
@@ -176,9 +209,33 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
   const updateDoc: VaultCtx['updateDoc'] = useCallback(
     async (id, patch) => {
-      const next = docs.map((d) => (d.id === id ? { ...d, ...patch, updatedAt: new Date().toISOString() } : d));
+      const prev = docs.find((d) => d.id === id);
+      const nextDoc = prev ? { ...prev, ...patch, updatedAt: new Date().toISOString() } : null;
+      const next = docs.map((d) => (d.id === id ? (nextDoc as VaultDocument) : d));
       setDocs(next);
       await storage.setDocs(next);
+
+      // Re-schedule reminders when anything reminder-relevant changed on a doc that still has an expiry.
+      if (prev && nextDoc) {
+        const expiryChanged  = (prev.expiryDate || null) !== (nextDoc.expiryDate || null);
+        const flagsChanged   =
+          prev.reminder.days30 !== nextDoc.reminder.days30 ||
+          prev.reminder.days7  !== nextDoc.reminder.days7  ||
+          prev.reminder.days1  !== nextDoc.reminder.days1;
+        const nameChanged    = prev.name !== nextDoc.name;
+
+        if (expiryChanged || flagsChanged || nameChanged) {
+          await clearRemindersFor(nextDoc.id);
+          if (nextDoc.expiryDate) {
+            try {
+              const ids = await scheduleReminders(nextDoc.id, nextDoc.name, nextDoc.expiryDate, nextDoc.reminder);
+              await setRemindersFor(nextDoc.id, ids);
+            } catch (err) {
+              console.warn('Failed to re-schedule reminders on update:', err);
+            }
+          }
+        }
+      }
     },
     [docs]
   );
@@ -195,11 +252,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           await deleteFromDrive(user, doc.fileId, doc.localUri);
         } catch {}
       }
-      const nids = reminderIdsStore.get(id);
-      if (nids) {
-        await cancelAllForId(nids);
-        reminderIdsStore.delete(id);
-      }
+      await clearRemindersFor(id);
     },
     [user, docs]
   );
@@ -212,7 +265,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       setEvents(next);
       await storage.setEvents(next);
       const ids = await scheduleReminders(ev.id, ev.title, ev.date, ev.reminder);
-      reminderIdsStore.set(ev.id, ids);
+      await setRemindersFor(ev.id, ids);
     },
     [events]
   );
@@ -222,11 +275,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const next = events.filter((e) => e.id !== id);
       setEvents(next);
       await storage.setEvents(next);
-      const nids = reminderIdsStore.get(id);
-      if (nids) {
-        await cancelAllForId(nids);
-        reminderIdsStore.delete(id);
-      }
+      await clearRemindersFor(id);
     },
     [events]
   );
