@@ -3,7 +3,7 @@ name: Android Build
 on:
   push:
     branches:
-      - appdevelopment
+      - beforeappdevelopment
 
 jobs:
   build:
@@ -36,25 +36,23 @@ jobs:
         run: |
           echo "$KEYSTORE" | base64 --decode > safevault-release.keystore
 
+      - name: Verify Keystore
+        working-directory: frontend/android
+        run: |
+          echo "Listing android folder..."
+          ls -la
       - name: Give Execute Permission
         working-directory: frontend/android
         run: chmod +x gradlew
 
-      - name: Build Release APK
+      - name: Build Release APK & AAB
         working-directory: frontend/android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
-
-      - name: Build Release AAB
-        working-directory: frontend/android
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew bundleRelease
+        run: |
+          ./gradlew assembleRelease bundleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
