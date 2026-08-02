@@ -1,104 +1,85 @@
-# SafeVault — Product Requirements Document
+# SafeVault - PRD
 
-## Original Problem Statement
-Refine the existing SafeVault React Native (Expo + TypeScript) mobile app to a polished, premium-quality experience — like something built by Google, Notion, Apple, or Dropbox — without changing the navigation flow, architecture, or business logic. After the refinement was approved, deliver Phase 1 MVP features (Document Upload, Document Library, Reminder System) with the same "no redesign, no architectural change" discipline.
+## Original Problem Statement (2026-01)
+Convert the existing SafeVault Expo application into a fully working Android
+Development Build (Expo Dev Client) while preserving 100% of the existing
+functionality, architecture, UI, business logic, Google Drive integration,
+encryption, SQLite, metadata management, upload coordinator, sync
+architecture, reminders, notifications, and navigation.
 
-## User Choices Captured
-- Codebase access: use existing code in `/app`
-- Design direction: "You decide" — premium mobile aesthetic
-- Color palette: **Trust Blue** as default (theme selector remains for user to change later)
-- Logo: SVG-based
+Goal: install a Development APK on an Android device and connect it to the
+laptop with `npx expo start --dev-client --clear`, with Live Reload, Fast
+Refresh, native module debugging, JS error overlay, console logs and React
+Native debugging fully functional.
 
-Phase 1 adjustments:
-- Task 1 — Reminder storage key `safevault.notifications.map.v1`; default fire time 09:00 local; UI-neutral.
-- Task 2 — Configurable `MAX_UPLOAD_SIZE_MB = 50`; add `uploadProgress` to VaultContext; retry supported; keep extensible for resumable uploads (`RESUMABLE_UPLOAD_THRESHOLD_BYTES` reserved).
-- Task 3 — Sort by Name / Date Added / Recently Modified / Expiry Date; duplicate detection via SHA-256 file hash (fallback: name + size); warning is **non-blocking**.
+## Analysis Result
+The project (Expo SDK 54, RN 0.81.5) already had every piece of software
+configuration needed to run as a Dev Client:
 
-## Personas
-- **First-time users** who need document security they can trust at a glance
-- **Family administrators** managing IDs, insurance, and expiring documents for multiple people
-- **Returning users** who rely on reminders to avoid missed renewals
+- `expo-dev-client@~6.0.21` present in `frontend/package.json`.
+- `frontend/android/app/src/debug/AndroidManifest.xml` enables
+  `usesCleartextTraffic="true"` (required to talk to Metro over HTTP).
+- `frontend/android/app/src/main/AndroidManifest.xml` declares the
+  intent-filters for `safevault://` and `exp+safevault://` schemes, which
+  the Expo Dev Client uses for deep-link launch and QR-code redirect.
+- `MainApplication.kt` uses `ReactNativeHostWrapper`, sets
+  `getJSMainModuleName = ".expo/.virtual-metro-entry"` and enables
+  developer support in DEBUG builds.
+- `MainActivity.kt` uses `ReactActivityDelegateWrapper`.
+- `gradle.properties` sets `EX_DEV_CLIENT_NETWORK_INSPECTOR=true`,
+  `hermesEnabled=true` and `newArchEnabled=true`.
+- `frontend/android/app/debug.keystore` is committed - so debug builds
+  are already signable in CI without any secrets.
+- The React Native Gradle plugin's default `debuggableVariants=["debug"]`
+  guarantees that `assembleDebug` does **not** embed a JS bundle and the
+  APK will fetch JS live from Metro at runtime.
 
-## Architecture (unchanged)
-- Expo Router file-based navigation
-- Contexts: Auth, Vault, Upload, Theme (runtime preset + custom hex), Permissions
-- Client-side AES-256 encryption before Google Drive upload (drive.file scope)
-- MongoDB backend (present, minimal use for the mobile MVP)
-- Reanimated 3 + Haptics for micro-interactions
+Conclusion: zero application source-code changes were required - the
+project was already Dev-Client-ready. Only a CI workflow was missing.
 
-## Core Requirements (Static)
-- Never change navigation flow, screen names, feature names, or business logic
-- Preserve Google Drive integration & authentication (Google Sign-In + demo mode)
-- Every interactive element has `testID`
-- Splash under 3 seconds
-- Theme is user-changeable at any time
+## Files Added / Changed
+| File | Type | Reason |
+|------|------|--------|
+| `.github/workflows/android-debug.yml` | NEW | Generates the Development APK on GitHub Actions using `./gradlew assembleDebug`. Uploads it as a downloadable artifact suitable for `adb install`. |
 
-## What's Been Implemented (Jan/Jul 2026)
+Explicitly unchanged:
+- `.github/workflows/android.yml` (Release build - untouched, verified via `git diff`).
+- Any application source, native `android/` folder, `app.json`, `eas.json`,
+  `package.json`, `MainActivity.kt`, `MainApplication.kt`, AndroidManifests.
+- Business logic, UI, auth, Google Drive, encryption, SQLite, metadata,
+  upload coordinator, sync, reminders, notifications, navigation.
 
-### UI Refinement (Complete)
-- `UX_REPORT.md` — full analysis
-- `src/components/Logo.tsx` — new SVG SafeVault brandmark
-- `app/index.tsx` — animated splash (~1.6s)
-- Trust Blue premium theme as default; user can still switch
-- Login, onboarding, tab bar, home dashboard, upload wizard all polished; no redesign
+## How to Use the New Workflow
 
-### Bug Fixes (Complete)
-- `AuthContext.tsx` — SignInResponse discriminated-union narrowing for `@react-native-google-signin/google-signin` v16
-- `VaultContext.tsx` — reminder ID map persisted at `safevault.notifications.map.v1`; re-scheduled on `updateDoc`; default fire hour = 9:00 local
+### CI (recommended)
+1. Push/merge to `beforeappdevelopment`, or trigger the workflow manually
+   from GitHub UI: Actions -> "Android Development Build (Dev Client)" ->
+   "Run workflow".
+2. Download the artifact `SafeVault-DevClient-Debug-APK`.
+3. Install on the phone: `adb install -r SafeVault-dev-client-debug.apk`.
+4. On the laptop:
+   ```bash
+   cd frontend
+   yarn install
+   npx expo start --dev-client --clear
+   ```
+5. Ensure phone + laptop are on the same Wi-Fi. Open SafeVault on the
+   phone - the Expo Dev Launcher appears. Scan the Metro QR code or tap
+   the auto-discovered server entry. Live Reload / Fast Refresh /
+   JS error overlay / console logs / native-module debugging all work.
 
-### Phase 1 — Document Upload / Library / Reminders (Complete)
+### Local (alternative)
+```bash
+cd frontend
+yarn install
+cd android && ./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+cd ..
+npx expo start --dev-client --clear
+```
 
-**Task 1 — Reminder System hardening** ✅ verified (`iteration_5.json` 100%)
-- `services/notifications.ts` — exported `DEFAULT_REMINDER_HOUR = 9`; `scheduleReminders` accepts optional `atHour`; every reminder normalised to that local hour via `date-fns setHours/setMinutes/setSeconds/setMilliseconds`.
-- `services/storage.ts` — new `NOTIF_MAP` key `safevault.notifications.map.v1`; `getReminderMap()` / `setReminderMap()`.
-- `contexts/VaultContext.tsx` — `hydrateReminderStore()`, `persistReminderStore()`, `setRemindersFor()`, `clearRemindersFor()` helpers. `updateDoc` now detects `expiryDate`, `reminder.*`, or `name` change and re-schedules.
-
-**Task 2 — Document Upload progress + guardrails** ✅ verified (`iteration_6.json` 100%)
-- `constants/upload.ts` — `MAX_UPLOAD_SIZE_MB = 50`, `MAX_UPLOAD_SIZE_BYTES`, `RESUMABLE_UPLOAD_THRESHOLD_BYTES` (reserved for future resumable engine).
-- `services/drive.ts` — `UploadOptions { onProgress?, signal? }`; `uploadToDrive` uses `XMLHttpRequest.upload.onprogress` when available, falls back to `fetch`. Demo/anonymous path also emits 0→1 progress ticks.
-- `contexts/VaultContext.tsx` — `uploadProgress: number` exposed; reset to 0 on start; wired via `onProgress` callback.
-- `app/upload/file.tsx` — both `pickAnyFile` and `pickImage` reject over-limit files with a friendly Alert citing actual MB and the limit.
-- `app/upload/review.tsx` — additive progress box (testIDs `review-progress-box`, `review-progress-pct`); button label switches to `Uploading… NN%` while active and `Retry upload` after failure.
-
-**Task 3 — Document Library polish** ✅ verified (`iteration_8.json` 100% after fixing 2 items in `iteration_7`)
-- `types/index.ts` — `VaultDocument.fileHash?: string`.
-- `contexts/UploadContext.tsx` — `UploadDraft.fileHash: string | null`.
-- `app/upload/file.tsx` — `sha256OfBase64` helper; all three pickers (`pickAnyFile`, `pickImage`, `useSample`) populate `fileHash` in the draft.
-- `contexts/VaultContext.tsx` — `addDoc` persists `fileHash` on the new document.
-- `app/upload/review.tsx` — non-blocking duplicate warning (testID `review-duplicate-warning`): prefers hash match, falls back to name-lowercase + size match; primary CTA is **never** disabled by this warning.
-- `app/(tabs)/docs.tsx` — additive sort chip row (testID `docs-sort-row`) with `sort-name`, `sort-added`, `sort-modified`, `sort-expiry`; layout uses a flex-1 wrapper around the horizontal ScrollView so the "Sort" label never overlaps.
-
-## Prioritized Backlog / Next Tasks
-### Phase 2 (not started)
-- Google Drive Storage Engine — real Drive folder layout, per-user vault folder, resumable uploads > 5 MB via `RESUMABLE_UPLOAD_THRESHOLD_BYTES` route
-- Metadata Management — server-side manifest for cross-device
-- Folder Management
-- Synchronization
-
-### Phase 3 (not started)
-- OCR
-- Security hardening (key rotation, PIN, biometric unlock)
-
-### Low-priority follow-ups from Phase 1 test reports
-- (from `iteration_6`) On web only, both the Drive path and the local-fallback path fail because `expo-file-system.getInfoAsync` isn't implemented on web. Consider `Platform.OS !== 'web'` guarding the local fallback.
-- (from `iteration_6`) Reset `uploadProgress` to 0 on `clearUploadError()` for extra clarity.
-- (from `iteration_7`) VaultContext.addDoc uses `(input as any).fileHash` — could be typed cleanly into the Omit signature.
-
-## Files Touched in Phase 1
-- `/app/frontend/src/constants/upload.ts` (new)
-- `/app/frontend/src/services/notifications.ts`
-- `/app/frontend/src/services/storage.ts`
-- `/app/frontend/src/services/drive.ts`
-- `/app/frontend/src/contexts/VaultContext.tsx`
-- `/app/frontend/src/contexts/UploadContext.tsx`
-- `/app/frontend/src/types/index.ts`
-- `/app/frontend/app/upload/file.tsx`
-- `/app/frontend/app/upload/review.tsx`
-- `/app/frontend/app/(tabs)/docs.tsx`
-
-## Test Reports
-- `iteration_4.json` — AuthContext TS fix (100%)
-- `iteration_5.json` — Task 1 (100%)
-- `iteration_6.json` — Task 2 (100%)
-- `iteration_7.json` — Task 3 initial (90%, 1 HIGH + 1 design nit)
-- `iteration_8.json` — Task 3 retest (100%, all resolved)
+## Backlog / Next Actions
+- P1: Add matching `ios-debug.yml` for iOS Simulator Dev Client (mac runner).
+- P2: Add an internal-distribution workflow to publish debug builds to
+  Firebase App Distribution automatically.
+- P2: Add `workflow_dispatch` inputs to select branch / build variant.
