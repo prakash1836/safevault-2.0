@@ -103,7 +103,7 @@ export default function FileStep() {
     setDraft({ fileBase64: null, fileName: null, mimeType: null, size: null, fileHash: null });
   };
 
-  const proceed = () => router.push('/upload/details');
+  const proceed = () => router.push('/upload/storage');
 
   const fileExt = draft.fileName?.split('.').pop()?.toUpperCase() || 'FILE';
 

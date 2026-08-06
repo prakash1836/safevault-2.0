@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState } from 'react';
-import type { DocCategory, DocReminder } from '../types';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import type { DocCategory, DocReminder, StorageMode } from '../types';
+import { StoragePreference } from '../services/storagePreference';
 
 export interface UploadDraft {
   category: DocCategory | null;
@@ -15,6 +16,8 @@ export interface UploadDraft {
   expiryDate: string | null;
   notes: string;
   reminder: DocReminder;
+  /** Per-document storage choice. Defaults from `StoragePreference.getMode()` on mount. */
+  storageMode: StorageMode;
 }
 
 const EMPTY: UploadDraft = {
@@ -30,6 +33,7 @@ const EMPTY: UploadDraft = {
   expiryDate: null,
   notes: '',
   reminder: { days30: true, days7: true, days1: true },
+  storageMode: 'both',
 };
 
 interface Ctx {
@@ -42,8 +46,23 @@ const UploadContext = createContext<Ctx | null>(null);
 
 export function UploadProvider({ children }: { children: React.ReactNode }) {
   const [draft, setDraftState] = useState<UploadDraft>(EMPTY);
+
+  // Hydrate the last-used storage mode on mount so the default reflects the
+  // user's most recent choice.
+  useEffect(() => {
+    (async () => {
+      try {
+        const mode = await StoragePreference.getMode();
+        setDraftState((d) => ({ ...d, storageMode: mode }));
+      } catch {
+        /* fall back to 'both' */
+      }
+    })();
+  }, []);
+
   const setDraft = (patch: Partial<UploadDraft>) => setDraftState((d) => ({ ...d, ...patch }));
-  const reset = () => setDraftState(EMPTY);
+  const reset = () =>
+    setDraftState((d) => ({ ...EMPTY, storageMode: d.storageMode }));
   return <UploadContext.Provider value={{ draft, setDraft, reset }}>{children}</UploadContext.Provider>;
 }
 

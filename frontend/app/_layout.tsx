@@ -28,6 +28,7 @@ export default function RootLayout() {
                     <Stack.Screen name="document/[id]" />
                     <Stack.Screen name="family" />
                     <Stack.Screen name="settings/theme" />
+                    <Stack.Screen name="settings/storage-security" />
                   </Stack>
                 </UploadProvider>
               </VaultProvider>

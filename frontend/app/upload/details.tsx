@@ -43,7 +43,7 @@ export default function DetailsStep() {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <UploadHeader title="Add to Vault" />
-      <Stepper step={2} />
+      <Stepper step={3} />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.duration(200)}>
           <Text style={styles.h1}>Document details</Text>

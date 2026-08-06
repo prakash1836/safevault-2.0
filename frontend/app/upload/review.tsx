@@ -64,6 +64,7 @@ export default function ReviewStep() {
         notes: draft.notes,
         reminder: draft.reminder,
         fileBase64: draft.fileBase64,
+        storageMode: draft.storageMode,
       } as any);
       
       hapt.success();
@@ -101,7 +102,7 @@ export default function ReviewStep() {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <UploadHeader title="Review" />
-      <Stepper step={3} />
+      <Stepper step={4} />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.duration(200)}>
           <Text style={styles.h1}>Almost done</Text>
@@ -150,6 +151,16 @@ export default function ReviewStep() {
           <Card style={{ marginTop: spacing.md }} variant="elevated">
             <Row label="Owner" value={owner?.name || 'You'} />
             <Row label="Issued" value={fmtDate(draft.issueDate || undefined)} />
+            <Row
+              label="Storage"
+              value={
+                draft.storageMode === 'local'
+                  ? 'Local Vault only'
+                  : draft.storageMode === 'drive'
+                    ? 'Google Drive (encrypted)'
+                    : 'Local + Google Drive'
+              }
+            />
             <Row label="Expires" value={fmtDate(draft.expiryDate || undefined)} last />
           </Card>
         </Animated.View>

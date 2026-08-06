@@ -22,7 +22,18 @@ export interface DocReminder {
   days1: boolean;
 }
 
-export type SyncState = 'pending-upload' | 'uploading' | 'synced' | 'failed' | 'deleted';
+export type SyncState = 'pending-upload' | 'uploading' | 'synced' | 'failed' | 'deleted' | 'local-only';
+
+/**
+ * Where a document is persisted. Set at upload time from the "Storage Type"
+ * step of the Upload Wizard, or defaults to the user's preferred mode.
+ *   local  → encrypted local cache only (never uploaded)
+ *   drive  → encrypted upload to Google Drive (no local cache retained)
+ *   both   → encrypted local cache + encrypted upload to Drive (default)
+ * Optional for backwards compatibility with docs created before this field
+ * existed — treat `undefined` as `'both'`.
+ */
+export type StorageMode = 'local' | 'drive' | 'both';
 
 export interface VaultDocument {
   id: string;
@@ -36,6 +47,8 @@ export interface VaultDocument {
   /** SHA-256 hex digest of the raw (pre-encryption) file bytes. Used for duplicate detection. */
   fileHash?: string;
   encrypted: true;
+  /** Optional; defaults to `'both'` when omitted. See {@link StorageMode}. */
+  storageMode?: StorageMode;
   /** Current sync state — driven by UploadCoordinator (Sprint 3). Defaults to 'synced'. */
   syncState?: SyncState;
   /** Last upload error message, if syncState === 'failed'. */
