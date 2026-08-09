@@ -4,7 +4,7 @@ import { Check } from 'lucide-react-native';
 import { colors, spacing, typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 
-const LABELS = ['Type', 'Upload', 'Details', 'Review'];
+const LABELS = ['Type', 'Upload', 'Storage', 'Details', 'Review'];
 
 export function Stepper({ step }: { step: number }) {
   const t = useTheme();

@@ -32,7 +32,7 @@
 //
 // This module is intentionally UI-agnostic — VaultContext is the sole consumer.
 
-import type { AuthUser, VaultDocument, SyncState } from '../types';
+import type { AuthUser, VaultDocument, SyncState, StorageMode } from '../types';
 import { encryptBase64, getKey } from './encryption';
 import { saveEncryptedLocal, uploadToDrive, deleteEncryptedLocal } from './drive';
 import { FolderManager } from './folderManager';
@@ -119,22 +119,30 @@ class Coordinator {
   async submit(input: {
     doc: Omit<VaultDocument, 'encrypted' | 'localUri' | 'fileId' | 'syncState'> & {
       fileBase64: string;
+      /** Where to persist. `undefined` → `'both'` for backwards compat. */
+      storageMode?: StorageMode;
     };
     onProgress?: (p: number) => void;
   }): Promise<SubmitResult> {
     if (!this.user) throw new Error('UploadCoordinator has no user session');
     const user = this.user;
+    const storageMode: StorageMode = input.doc.storageMode || 'both';
+    const wantsLocal = storageMode === 'local' || storageMode === 'both';
+    const wantsDrive = storageMode === 'drive' || storageMode === 'both';
 
     // 1. Encrypt
     const key = await getKey();
     if (!key) throw new Error('Missing encryption key');
     const cipher = encryptBase64(input.doc.fileBase64, key);
 
-    // 2. Local encrypted cache (nullable on web)
-    const localCipherPath = await saveEncryptedLocal(input.doc.id, cipher);
+    // 2. Local encrypted cache (skipped when the user chose Drive-only)
+    const localCipherPath = wantsLocal ? await saveEncryptedLocal(input.doc.id, cipher) : null;
 
-    // 3. Build durable VaultDocument shell in 'pending-upload' state
+    // 3. Build durable VaultDocument shell.
+    //    For local-only uploads there is no Drive hop, so sync state jumps
+    //    straight to a terminal 'local-only' — no queue entry, no retry loop.
     const now = new Date().toISOString();
+    const initialSyncState: SyncState = wantsDrive ? 'pending-upload' : 'local-only';
     const durable: VaultDocument = {
       id: input.doc.id,
       name: input.doc.name,
@@ -146,7 +154,8 @@ class Coordinator {
       size: input.doc.size,
       fileHash: input.doc.fileHash,
       encrypted: true,
-      syncState: 'pending-upload',
+      storageMode,
+      syncState: initialSyncState,
       syncError: null,
       issueDate: input.doc.issueDate,
       expiryDate: input.doc.expiryDate,
@@ -182,6 +191,18 @@ class Coordinator {
     }
 
     // 5. Queue item (persistent — survives restart / reboot / force close)
+    //    Skip entirely for local-only uploads: there is nothing to send to Drive.
+    if (!wantsDrive) {
+      this.emit({
+        docId: durable.id,
+        state: 'local-only',
+        localUri: localCipherPath,
+        progress: 1,
+      });
+      input.onProgress?.(1);
+      return { doc: durable, attempt: { status: 'local-only', localUri: localCipherPath } };
+    }
+
     const qItem = await UploadQueue.enqueue({
       id: 'q_' + durable.id + '_' + Date.now().toString(36),
       docId: durable.id,
@@ -365,7 +386,8 @@ export interface SubmitResult {
 
 export type AttemptResult =
   | { status: 'synced'; fileId: string; driveFolderId: string }
-  | { status: 'pending'; error: string };
+  | { status: 'pending'; error: string }
+  | { status: 'local-only'; localUri: string | null };
 
 /* -------------------------------------------------------------------------- */
 /* Singleton                                                                  */

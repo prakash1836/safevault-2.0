@@ -1,85 +1,133 @@
-# SafeVault - PRD
+# SafeVault — PRD
 
-## Original Problem Statement (2026-01)
-Convert the existing SafeVault Expo application into a fully working Android
-Development Build (Expo Dev Client) while preserving 100% of the existing
-functionality, architecture, UI, business logic, Google Drive integration,
-encryption, SQLite, metadata management, upload coordinator, sync
-architecture, reminders, notifications, and navigation.
+## Sprint 3 — Product Experience Enhancement (2026-01)
+Preserve architecture; enhance onboarding, storage understanding, recovery
+awareness and document accessibility. All prior work in place.
 
-Goal: install a Development APK on an Android device and connect it to the
-laptop with `npx expo start --dev-client --clear`, with Live Reload, Fast
-Refresh, native module debugging, JS error overlay, console logs and React
-Native debugging fully functional.
+### Delivered
+- New stepper onboarding (Welcome → Details → Security → Storage → Drive →
+  Encryption → Pricing → Permissions).
+- Recovery Password service (`services/recoveryPassword.ts`) — SecureStore-only,
+  future-proof interface (`deriveWrappingKey` hook stubbed).
+- Storage-mode preference + per-document `storageMode` field.
+- New Upload Wizard "Storage Type" step between Upload and Details.
+- `UploadCoordinator` branches on storage mode; adds `local-only` terminal state.
+- Storage & Security settings page (`/settings/storage-security`).
+- Original + Encrypted export from document detail via bottom sheet.
+- Full-screen `DocumentProgressOverlay` (Preparing → Downloading → Decrypting → Opening).
+- Trust messaging (`TrustBadges`, `InfoSheet`) reused across onboarding + settings.
 
-## Analysis Result
-The project (Expo SDK 54, RN 0.81.5) already had every piece of software
-configuration needed to run as a Dev Client:
+### Untouched (per instructions)
+- `UploadCoordinator` retry/backoff loop, queue engine.
+- `MetadataManager`, `FolderManager`, `SyncManager` architecture.
+- Encryption (`services/encryption.ts`) — key derivation unchanged.
+- SQLite schema (only additive optional `storageMode` field on VaultDocument).
+- Reminders, notifications, existing tests, existing testIDs.
+- Existing `.github/workflows/android.yml` and `.github/workflows/android-debug.yml`.
 
-- `expo-dev-client@~6.0.21` present in `frontend/package.json`.
-- `frontend/android/app/src/debug/AndroidManifest.xml` enables
-  `usesCleartextTraffic="true"` (required to talk to Metro over HTTP).
-- `frontend/android/app/src/main/AndroidManifest.xml` declares the
-  intent-filters for `safevault://` and `exp+safevault://` schemes, which
-  the Expo Dev Client uses for deep-link launch and QR-code redirect.
-- `MainApplication.kt` uses `ReactNativeHostWrapper`, sets
-  `getJSMainModuleName = ".expo/.virtual-metro-entry"` and enables
-  developer support in DEBUG builds.
-- `MainActivity.kt` uses `ReactActivityDelegateWrapper`.
-- `gradle.properties` sets `EX_DEV_CLIENT_NETWORK_INSPECTOR=true`,
-  `hermesEnabled=true` and `newArchEnabled=true`.
-- `frontend/android/app/debug.keystore` is committed - so debug builds
-  are already signable in CI without any secrets.
-- The React Native Gradle plugin's default `debuggableVariants=["debug"]`
-  guarantees that `assembleDebug` does **not** embed a JS bundle and the
-  APK will fetch JS live from Metro at runtime.
+### Placeholders — deferred to future sprints
+- Biometric Unlock (persists as UX toggle only; needs `expo-local-authentication`).
+- Auto Lock timer (persists; will activate with biometrics).
+- Export Recovery Kit (UI button opens explainer sheet).
+- Emergency Recovery (UI button opens explainer sheet).
+- Change Recovery Password full flow (button opens explainer sheet).
+- Recovery-driven multi-device (`deriveWrappingKey` stubbed, throws until wired).
+- Pricing purchases (Free / Premium / Family cards render, purchase not wired).
 
-Conclusion: zero application source-code changes were required - the
-project was already Dev-Client-ready. Only a CI workflow was missing.
+## Sprint 4 — Recovery Foundation (2026-01)
 
-## Files Added / Changed
-| File | Type | Reason |
-|------|------|--------|
-| `.github/workflows/android-debug.yml` | NEW | Generates the Development APK on GitHub Actions using `./gradlew assembleDebug`. Uploads it as a downloadable artifact suitable for `adb install`. |
+### Cryptographic architecture
+Recovery Password → PBKDF2-SHA256(210 000) → 64 bytes → split into KEK (bytes 0..32) + Verifier (bytes 32..64).
+KEK wraps the *existing* DEK with AES-256-CBC + random IV. Wrapped result + verifier + KDF params stored as plain JSON at `SafeVault/manifest/recovery.json`. The DEK itself is never changed → existing ciphertext remains readable.
 
-Explicitly unchanged:
-- `.github/workflows/android.yml` (Release build - untouched, verified via `git diff`).
-- Any application source, native `android/` folder, `app.json`, `eas.json`,
-  `package.json`, `MainActivity.kt`, `MainApplication.kt`, AndroidManifests.
-- Business logic, UI, auth, Google Drive, encryption, SQLite, metadata,
-  upload coordinator, sync, reminders, notifications, navigation.
+### Files added
+- `src/services/recovery.ts` — envelope build/save/load, wrap/unwrap, setup, restore, change-password. Idempotent, side-effect-free on wrong password.
+- `app/recovery/setup.tsx` — set-up screen.
+- `app/recovery/restore.tsx` — new-device restore screen.
+- `app/recovery/change.tsx` — change-password screen.
+- `__tests__/recovery.test.mjs` — 15 pure-crypto unit tests.
+- `docs/RECOVERY.md` — full architectural write-up.
 
-## How to Use the New Workflow
+### Files modified
+- `app/_layout.tsx` — registered 3 recovery routes.
+- `app/login.tsx` — "Restore from Google Drive" entry.
+- `app/settings/storage-security.tsx` — real recovery status badge, real "Set Up Recovery" / "Change Recovery Password" / "Recovery information" rows.
 
-### CI (recommended)
-1. Push/merge to `beforeappdevelopment`, or trigger the workflow manually
-   from GitHub UI: Actions -> "Android Development Build (Dev Client)" ->
-   "Run workflow".
-2. Download the artifact `SafeVault-DevClient-Debug-APK`.
-3. Install on the phone: `adb install -r SafeVault-dev-client-debug.apk`.
-4. On the laptop:
-   ```bash
-   cd frontend
-   yarn install
-   npx expo start --dev-client --clear
-   ```
-5. Ensure phone + laptop are on the same Wi-Fi. Open SafeVault on the
-   phone - the Expo Dev Launcher appears. Scan the Metro QR code or tap
-   the auto-discovered server entry. Live Reload / Fast Refresh /
-   JS error overlay / console logs / native-module debugging all work.
+### Placeholders deferred
+- Export Recovery Kit (PDF)
+- Emergency Recovery (Shamir-shared secret)
+- Biometric Unlock + Auto Lock
+- Rate-limit on wrong password
 
-### Local (alternative)
-```bash
-cd frontend
-yarn install
-cd android && ./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-cd ..
-npx expo start --dev-client --clear
-```
+## Sprint 5 — Recovery Hardening & Restore UX (2026-01)
 
-## Backlog / Next Actions
-- P1: Add matching `ios-debug.yml` for iOS Simulator Dev Client (mac runner).
-- P2: Add an internal-distribution workflow to publish debug builds to
-  Firebase App Distribution automatically.
-- P2: Add `workflow_dispatch` inputs to select branch / build variant.
+### Security review outcome
+- Confirmed: DEK is unrecoverable without the password (attack #2 impossible).
+- Confirmed: chosen-DEK install requires knowing the user's password (attack #3 impossible).
+- DoS attacks (garbage-DEK swap, rollback to old backup) noted as low-severity residual; envelope MAC deferred to a follow-up sprint.
+- No changes to existing document encryption or existing DEK.
+
+### Implemented
+1. **Restore progress**: after successful unlock, MetadataManager.load runs with staged UI progress (`Loading vault index… → Downloading manifest… → Loaded N documents`). Restore screen ends with the actual document count.
+2. **Rate-limit**: exponential backoff 30s → 2m → 10m → 1h → 24h after attempts 4→8+. Persisted per-vault in SecureStore. Countdown UI on the restore screen. Cleared on successful unlock.
+3. **Cross-device change detection**: RecoveryChangeWatcher tracks last-seen revision. Banner in Storage & Security when Drive envelope is newer than last-seen; tapping routes to Restore to re-verify.
+
+### Files added
+- src/services/recoveryRateLimit.ts
+- src/services/recoveryChangeWatcher.ts
+- __tests__/recoveryRateLimit.test.mjs (14 tests, all pass)
+
+### Files modified
+- src/services/recovery.ts — added fetchEnvelopeMetadata (cheap metadata-only Drive call).
+- app/recovery/restore.tsx — new `locked` and `restoring` phases; LockoutCountdown; rate-limit hooks; MetadataManager.load with progress; RecoveryChangeWatcher acknowledgement on success.
+- app/recovery/setup.tsx — acknowledge revision baseline after successful setup.
+- app/recovery/change.tsx — re-anchor revision baseline after password change.
+- app/settings/storage-security.tsx — cross-device change banner + isChanged check.
+
+### Verification (testing_agent iteration_12)
+- 52/52 unit tests pass across 6 test files.
+- npx tsc --noEmit → 0 errors.
+- npx expo export --platform web → 25 routes, all 4 required recovery routes present.
+- Testing agent: retest_needed=false, action_items=[], no issues raised.
+
+### Deferred / documented limitations
+- AES-CBC → AES-GCM migration for envelope (schema-v2 with MAC) — future sprint.
+- Rollback attack (attacker swaps recovery.json with old recovery.bak) — future rev-forward-only enforcement.
+- Real-device restore over Drive — requires Google Sign-In, not automatable in this container.
+
+## Sprint 6 — Recovery Security Finalization (2026-01)
+
+### Schema-v2 design
+- PBKDF2 output extended from 64 to 96 bytes → KEK(0..32) + Verifier(32..64) + MAC_KEY(64..96).
+- First 64 bytes bit-identical to v1 → deterministic migration.
+- HMAC-SHA256 over canonical `|`-separated input covering schema, vaultId, revision, kdf.{alg,iters,saltHex,outputBytes}, wrappedKey.{alg,ivHex,ciphertext}, verifierHex. createdAt/updatedAt excluded (not security-relevant).
+- Constant-time MAC compare via `constantTimeEqualHex`.
+
+### Verification pipeline (invariant)
+validate → PBKDF2 → verifier compare → HMAC constant-time compare → AES unwrap → 32-byte DEK sanity → install. Any earlier failure → DEK untouched, Drive untouched.
+
+### v1 → v2 migration
+Same salt/iters → same first 64 bytes → same KEK/verifier/wrappedKey preserved verbatim. Only MAC field is added. createdAt/updatedAt/revision all preserved. Crash-safe: if the v2 upload fails, v1 remains at `recovery.json` and next restore retries.
+
+### Rollback protection
+Version-neutral key `safevault.recovery.highest.revision.<vaultId>` in SecureStore. `checkRollback` rejects envelope.revision < localHigh. Updated ONLY after full verification.
+
+### Files changed
+- Rewritten: src/services/recovery.ts (743 lines)
+- Updated: app/recovery/restore.tsx (handle 'tampered' and 'rollback' reasons)
+- Updated: app/recovery/change.tsx (handle 'tampered')
+- Added: __tests__/recoveryV2.test.mjs (30 tests)
+- Added: docs/QA_RECOVERY.md (physical-device checklist, not executed here)
+
+### Test results (verified by testing_agent iteration_13)
+- 82 unit tests pass, 0 failed across 7 files
+- tsc --noEmit: 0 errors
+- Metro/Expo export: 25 routes, all recovery routes present
+
+### Physical-device QA
+- NOT executed in this container (no Android, no real Drive account)
+- Checklist prepared at docs/QA_RECOVERY.md with 30+ steps covering: Device A vault setup, Device B new-device restore, wrong password, lockout ladder, network off, corrupted primary + backup, tampered MAC, rollback, cross-device change detection, multi-device sync, and DEK preservation across password change
+
+### Remaining limitations
+- New-device rollback: fresh install has no localHigh → relies on MAC + password. Documented.
+- AES-CBC on documents remains (envelope is now authenticated; document ciphertext migration deferred as it requires re-encrypting all docs).

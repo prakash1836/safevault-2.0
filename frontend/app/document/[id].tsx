@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, TextInput, Modal, Platform, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Trash2, Lock, Calendar, User, Bell, ShieldCheck, Pencil, Download, X, Check, Clock, FileText, AlertCircle } from 'lucide-react-native';
+import { ChevronLeft, Trash2, Lock, Calendar, User, Bell, ShieldCheck, Pencil, Download, X, Check, Clock, FileText, AlertCircle, Share2, FileLock2 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -13,9 +13,11 @@ import { Card, StatusBadge, PrimaryButton, IconButton, Chip } from '../../src/co
 import { PressableScale } from '../../src/components/PressableScale';
 import { EncryptedImagePreview } from '../../src/components/EncryptedImagePreview';
 import { SkeletonHero, SkeletonRow } from '../../src/components/Skeleton';
+import { DocumentProgressOverlay, type DocProgressStage } from '../../src/components/DocumentProgressOverlay';
 import { colors, radius, spacing, typography, shadow } from '../../src/constants/theme';
 import { fmtDate, getDocStatus, daysUntil } from '../../src/utils/date';
 import { getDocumentContent } from '../../src/services/documentContent';
+import { exportOriginal, exportEncrypted, type ExportStage } from '../../src/services/exportDoc';
 import { hapt } from '../../src/utils/haptics';
 
 export default function DocDetail() {
@@ -35,6 +37,9 @@ export default function DocDetail() {
   const [reminder, setReminder] = useState(doc?.reminder || { days30: true, days7: true, days1: true });
   const [pickWhich, setPickWhich] = useState<null | 'issue' | 'expiry'>(null);
   const [downloading, setDownloading] = useState(false);
+  const [downloadStage, setDownloadStage] = useState<DocProgressStage>('preparing');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [exportSheetOpen, setExportSheetOpen] = useState(false);
 
   if (!doc) {
     return (
@@ -71,7 +76,16 @@ export default function DocDetail() {
     setEditOpen(false);
   };
 
-  const onDownload = async () => {
+  const stageForExport = (s: ExportStage): DocProgressStage => {
+    if (s === 'preparing') return 'preparing';
+    if (s === 'downloading') return 'downloading';
+    if (s === 'decrypting') return 'decrypting';
+    if (s === 'writing' || s === 'sharing') return 'opening';
+    if (s === 'done') return 'done';
+    return 'preparing';
+  };
+
+  const runOpen = async () => {
     if (Platform.OS === 'web') {
       Alert.alert('Web preview', 'File download is supported on the mobile app. On web, the encrypted file remains available in your local cache.');
       return;
@@ -79,10 +93,12 @@ export default function DocDetail() {
     if (!doc.localUri && !doc.fileId) { Alert.alert('Unavailable', 'No file is attached to this document.'); return; }
     hapt.light();
     setDownloading(true);
+    setDownloadStage('preparing');
+    setDownloadProgress(0);
     try {
-      // Cache-first, integrity-verified. Downloads from Drive only when the
-      // local cache is missing or unreadable.
-      const result = await getDocumentContent(user!, doc);
+      setDownloadStage(doc.localUri ? 'decrypting' : 'downloading');
+      const result = await getDocumentContent(user!, doc, { onProgress: setDownloadProgress });
+      setDownloadStage('opening');
       const ext = doc.mimeType?.includes('pdf') ? 'pdf' : doc.mimeType?.includes('png') ? 'png' : doc.mimeType?.includes('jpeg') ? 'jpg' : 'bin';
       const out = (FileSystem.documentDirectory || '') + `safevault_export_${doc.id}.${ext}`;
       await FileSystem.writeAsStringAsync(out, result.base64, { encoding: FileSystem.EncodingType.Base64 });
@@ -93,8 +109,63 @@ export default function DocDetail() {
       await Share.share({ url: out, message: doc.name });
     } catch (e: any) {
       hapt.error();
-      Alert.alert('Download failed', e.message || 'Could not decrypt the file.');
-    } finally { setDownloading(false); }
+      Alert.alert('Open failed', e.message || 'Could not decrypt the file.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const runExportOriginal = async () => {
+    hapt.light();
+    setExportSheetOpen(false);
+    setDownloading(true);
+    setDownloadProgress(0);
+    setDownloadStage('preparing');
+    try {
+      const res = await exportOriginal(user!, doc, {
+        onProgress: setDownloadProgress,
+        onStage: (s) => setDownloadStage(stageForExport(s)),
+      });
+      hapt.success();
+      if (res.integrityWarning) {
+        Alert.alert('Integrity warning', res.integrityWarning);
+      }
+    } catch (e: any) {
+      hapt.error();
+      Alert.alert('Export failed', e.message || 'Could not export the original file');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const runExportEncrypted = async () => {
+    hapt.light();
+    setExportSheetOpen(false);
+    setDownloading(true);
+    setDownloadProgress(0);
+    setDownloadStage('preparing');
+    try {
+      await exportEncrypted(user!, doc, {
+        onProgress: setDownloadProgress,
+        onStage: (s) => setDownloadStage(stageForExport(s)),
+      });
+      hapt.success();
+    } catch (e: any) {
+      hapt.error();
+      Alert.alert('Export failed', e.message || 'Could not export the encrypted file');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const openExportSheet = () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Web preview', 'Downloads are supported on the mobile app only.');
+      return;
+    }
+    if (!doc.localUri && !doc.fileId) { Alert.alert('Unavailable', 'No file is attached to this document.'); return; }
+    hapt.light();
+    setExportSheetOpen(true);
   };
 
   return (
@@ -142,7 +213,7 @@ export default function DocDetail() {
             <PrimaryButton title="Edit" onPress={() => { hapt.light(); setEditOpen(true); }} icon={<Pencil color="#fff" size={16} />} testID="doc-edit-action" variant="dark" />
           </View>
           <View style={{ flex: 1 }}>
-            <PrimaryButton title="Download" onPress={onDownload} loading={downloading} variant="secondary" icon={<Download color={t.accent} size={16} />} testID="doc-download-action" />
+            <PrimaryButton title="Download" onPress={openExportSheet} loading={downloading} variant="secondary" icon={<Download color={t.accent} size={16} />} testID="doc-download-action" />
           </View>
         </Animated.View>
 
@@ -273,6 +344,71 @@ export default function DocDetail() {
           </View>
         </View>
       </Modal>
+      {/* Export choice sheet */}
+      <Modal visible={exportSheetOpen} transparent animationType="slide" onRequestClose={() => setExportSheetOpen(false)}>
+        <View style={styles.modalScrim}>
+          <View style={styles.exportSheet}>
+            <View style={styles.editHead}>
+              <Text style={styles.editTitle}>Download</Text>
+              <IconButton variant="transparent" size={36} onPress={() => setExportSheetOpen(false)} testID="export-sheet-close">
+                <X color={colors.textPrimary} size={22} />
+              </IconButton>
+            </View>
+            <View style={{ padding: spacing.xl, gap: spacing.md }}>
+              <PressableScale onPress={runOpen} testID="export-open" haptic="light">
+                <View style={styles.exportOption}>
+                  <View style={[styles.exportOptionIcon, { backgroundColor: t.accentSurface }]}>
+                    <FileText color={t.accent} size={22} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.exportOptionTitle}>Open</Text>
+                    <Text style={styles.exportOptionSub}>Decrypt and open with another app</Text>
+                  </View>
+                </View>
+              </PressableScale>
+
+              <PressableScale onPress={runExportOriginal} testID="export-original" haptic="light">
+                <View style={styles.exportOption}>
+                  <View style={[styles.exportOptionIcon, { backgroundColor: t.accentSurface }]}>
+                    <Share2 color={t.accent} size={22} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.exportOptionTitle}>Export Original</Text>
+                    <Text style={styles.exportOptionSub}>Readable PDF / image / file</Text>
+                  </View>
+                </View>
+              </PressableScale>
+
+              <PressableScale onPress={runExportEncrypted} testID="export-encrypted" haptic="light">
+                <View style={styles.exportOption}>
+                  <View style={[styles.exportOptionIcon, { backgroundColor: t.accentSurface }]}>
+                    <FileLock2 color={t.accent} size={22} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.exportOptionTitle}>Export Encrypted</Text>
+                    <Text style={styles.exportOptionSub}>Backup file — only SafeVault can open it</Text>
+                  </View>
+                </View>
+              </PressableScale>
+
+              <View style={[styles.exportNote, { backgroundColor: t.accentSurface }]}>
+                <ShieldCheck color={t.accent} size={14} />
+                <Text style={[styles.exportNoteTxt, { color: t.accent }]}>
+                  Original files are readable anywhere. Encrypted backups can only be opened by SafeVault with your recovery credentials.
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Full-screen progress overlay for open / export */}
+      <DocumentProgressOverlay
+        visible={downloading}
+        stage={downloadStage}
+        progress={downloadProgress}
+        testID="doc-progress-overlay"
+      />
     </SafeAreaView>
   );
 }
@@ -327,4 +463,13 @@ const styles = StyleSheet.create({
   rem: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: 6 },
   remTxt: { ...typography.body, color: colors.textPrimary, fontWeight: '500' },
   cb: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+
+  // Export sheet
+  exportSheet: { backgroundColor: colors.bg, borderTopLeftRadius: radius.hero, borderTopRightRadius: radius.hero },
+  exportOption: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  exportOptionIcon: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  exportOptionTitle: { ...typography.body, fontWeight: '700', color: colors.textPrimary },
+  exportOptionSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2, lineHeight: 17 },
+  exportNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, padding: spacing.sm, borderRadius: radius.md, marginTop: spacing.sm },
+  exportNoteTxt: { flex: 1, ...typography.caption, lineHeight: 17, fontWeight: '600' },
 });

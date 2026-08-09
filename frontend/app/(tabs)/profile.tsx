@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { LogOut, Users, ShieldCheck, Cloud, Bell, ChevronRight, Info, Palette, AlertTriangle } from 'lucide-react-native';
+import { LogOut, Users, ShieldCheck, Cloud, Bell, ChevronRight, Info, Palette, AlertTriangle, HardDrive } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useVault } from '../../src/contexts/VaultContext';
@@ -106,6 +106,7 @@ export default function Profile() {
         {/* Settings Group */}
         <Animated.View entering={FadeInDown.delay(200).duration(300)} style={styles.group}>
           <RowItem icon={<Palette color={t.accent} size={18} strokeWidth={1.6} />} label="Theme" value={presetName} onPress={() => router.push('/settings/theme')} testID="profile-theme-row" accent={t.accentSurface} />
+          <RowItem icon={<HardDrive color={t.accent} size={18} strokeWidth={1.6} />} label="Storage & Security" onPress={() => router.push('/settings/storage-security')} testID="profile-storage-security-row" accent={t.accentSurface} />
           <RowItem icon={<Users color={t.accent} size={18} strokeWidth={1.6} />} label="Family Members" onPress={() => router.push('/family')} testID="profile-family-row" accent={t.accentSurface} />
           <RowItem icon={<Cloud color={t.accent} size={18} strokeWidth={1.6} />} label={drive ? 'Google Drive · Connected' : 'Connect Google Drive'} onPress={() => router.replace('/onboarding')} testID="profile-drive-row" accent={t.accentSurface} />
           <RowItem icon={<Bell color={t.accent} size={18} strokeWidth={1.6} />} label="Reminder preferences" onPress={() => Alert.alert('Reminders', 'Each document can have 30‑day, 7‑day and 1‑day reminders. Configure per document.')} testID="profile-reminders-row" accent={t.accentSurface} />

@@ -211,6 +211,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
             createdAt: now,
             updatedAt: now,
             fileBase64: input.fileBase64,
+            storageMode: (input as any).storageMode,
           },
           onProgress: (p) => setUploadProgress(p),
         });
@@ -219,7 +220,12 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         const doc: VaultDocument = {
           ...submit.doc,
           fileId: submit.attempt.status === 'synced' ? submit.attempt.fileId : null,
-          syncState: submit.attempt.status === 'synced' ? 'synced' : 'pending-upload',
+          syncState:
+            submit.attempt.status === 'synced'
+              ? 'synced'
+              : submit.attempt.status === 'local-only'
+                ? 'local-only'
+                : 'pending-upload',
           syncError: submit.attempt.status === 'pending' ? submit.attempt.error : null,
         };
 
