@@ -47,6 +47,8 @@ export default function RecoveryChange() {
         hapt.error();
         if (r.reason === 'wrong-password') {
           Alert.alert('Incorrect current password', 'Your recovery envelope has not been changed.');
+        } else if (r.reason === 'tampered') {
+          Alert.alert('Recovery envelope tampered', 'The envelope in Drive failed integrity verification. Please restore from a trusted device first.');
         } else if (r.reason === 'no-envelope') {
           Alert.alert(
             'Recovery not configured',

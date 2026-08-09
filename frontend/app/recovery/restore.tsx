@@ -130,7 +130,19 @@ export default function RecoveryRestore() {
               `Your vault has not been changed. You have ${3 - status.attempts} attempt(s) remaining before a lockout begins.`,
             );
           }
-        } else if (r.reason === 'corrupted') {
+        } else if (r.reason === 'tampered') {
+          setPhase({ kind: 'corrupted' });
+          Alert.alert(
+            'Recovery envelope tampered',
+            'The recovery envelope failed integrity verification (MAC mismatch). Your vault has not been changed. Please re-upload the envelope from a trusted device.',
+          );
+        } else if (r.reason === 'rollback') {
+          setPhase({ kind: 'corrupted' });
+          Alert.alert(
+            'Recovery envelope is older than expected',
+            'This device previously accepted a newer recovery envelope. Someone may have rolled it back. Your vault has not been changed.',
+          );
+        } else if (r.reason === 'corrupted' || r.reason === 'malformed') {
           setPhase({ kind: 'corrupted' });
         } else {
           setPhase({ kind: 'not-found' });
