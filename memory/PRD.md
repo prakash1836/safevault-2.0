@@ -58,3 +58,39 @@ KEK wraps the *existing* DEK with AES-256-CBC + random IV. Wrapped result + veri
 - Emergency Recovery (Shamir-shared secret)
 - Biometric Unlock + Auto Lock
 - Rate-limit on wrong password
+
+## Sprint 5 — Recovery Hardening & Restore UX (2026-01)
+
+### Security review outcome
+- Confirmed: DEK is unrecoverable without the password (attack #2 impossible).
+- Confirmed: chosen-DEK install requires knowing the user's password (attack #3 impossible).
+- DoS attacks (garbage-DEK swap, rollback to old backup) noted as low-severity residual; envelope MAC deferred to a follow-up sprint.
+- No changes to existing document encryption or existing DEK.
+
+### Implemented
+1. **Restore progress**: after successful unlock, MetadataManager.load runs with staged UI progress (`Loading vault index… → Downloading manifest… → Loaded N documents`). Restore screen ends with the actual document count.
+2. **Rate-limit**: exponential backoff 30s → 2m → 10m → 1h → 24h after attempts 4→8+. Persisted per-vault in SecureStore. Countdown UI on the restore screen. Cleared on successful unlock.
+3. **Cross-device change detection**: RecoveryChangeWatcher tracks last-seen revision. Banner in Storage & Security when Drive envelope is newer than last-seen; tapping routes to Restore to re-verify.
+
+### Files added
+- src/services/recoveryRateLimit.ts
+- src/services/recoveryChangeWatcher.ts
+- __tests__/recoveryRateLimit.test.mjs (14 tests, all pass)
+
+### Files modified
+- src/services/recovery.ts — added fetchEnvelopeMetadata (cheap metadata-only Drive call).
+- app/recovery/restore.tsx — new `locked` and `restoring` phases; LockoutCountdown; rate-limit hooks; MetadataManager.load with progress; RecoveryChangeWatcher acknowledgement on success.
+- app/recovery/setup.tsx — acknowledge revision baseline after successful setup.
+- app/recovery/change.tsx — re-anchor revision baseline after password change.
+- app/settings/storage-security.tsx — cross-device change banner + isChanged check.
+
+### Verification (testing_agent iteration_12)
+- 52/52 unit tests pass across 6 test files.
+- npx tsc --noEmit → 0 errors.
+- npx expo export --platform web → 25 routes, all 4 required recovery routes present.
+- Testing agent: retest_needed=false, action_items=[], no issues raised.
+
+### Deferred / documented limitations
+- AES-CBC → AES-GCM migration for envelope (schema-v2 with MAC) — future sprint.
+- Rollback attack (attacker swaps recovery.json with old recovery.bak) — future rev-forward-only enforcement.
+- Real-device restore over Drive — requires Google Sign-In, not automatable in this container.
