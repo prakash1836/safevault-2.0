@@ -84,6 +84,11 @@ export default function Login() {
               </Text>
             </View>
           </PressableScale>
+          <PressableScale onPress={() => router.push('/recovery/restore')} haptic="light" testID="login-restore-btn">
+            <View style={styles.demoBtn}>
+              <Text style={[styles.demoText, { color: t.accent }]}>Restore from Google Drive →</Text>
+            </View>
+          </PressableScale>
           <Text style={styles.fineprint} testID="login-fineprint">
             By continuing you agree to our Terms & Privacy. We never read or share your documents.
           </Text>

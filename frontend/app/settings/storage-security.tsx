@@ -36,6 +36,7 @@ import { InfoSheet, SheetParagraph, SheetHeading } from '../../src/components/In
 import { StoragePreference, type StorageMode } from '../../src/services/storagePreference';
 import { Settings, type SettingsState } from '../../src/services/settings';
 import { RecoveryPassword } from '../../src/services/recoveryPassword';
+import { Recovery } from '../../src/services/recovery';
 import { colors, radius, spacing, typography, shadow } from '../../src/constants/theme';
 import { hapt } from '../../src/utils/haptics';
 
@@ -50,16 +51,42 @@ export default function StorageSecuritySettings() {
   const [settings, setSettings] = useState<SettingsState>(Settings.DEFAULT_SETTINGS);
   const [busy, setBusy] = useState<string | null>(null);
   const [showPlaceholder, setShowPlaceholder] = useState<null | { title: string; body: string }>(null);
+  const [recoveryLocal, setRecoveryLocal] = useState<boolean>(false);
+  const [recoveryDrive, setRecoveryDrive] = useState<null | { revision: number; updatedAt: string }>(null);
+  const [checkingRecovery, setCheckingRecovery] = useState<boolean>(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [mode, s] = await Promise.all([StoragePreference.getMode(), Settings.get()]);
+        const [mode, s, hasLocal] = await Promise.all([
+          StoragePreference.getMode(),
+          Settings.get(),
+          Recovery.isRecoveryConfiguredLocally(),
+        ]);
         setDefaultMode(mode);
         setSettings(s);
+        setRecoveryLocal(hasLocal);
       } catch {}
     })();
   }, []);
+
+  // Best-effort Drive check for recovery envelope (only when connected)
+  useEffect(() => {
+    if (!user || !driveConnected) return;
+    let cancelled = false;
+    (async () => {
+      setCheckingRecovery(true);
+      try {
+        const found = await Recovery.fetchEnvelope(user);
+        if (!cancelled) setRecoveryDrive(found ? { revision: found.envelope.revision, updatedAt: found.envelope.updatedAt } : null);
+      } catch {
+        if (!cancelled) setRecoveryDrive(null);
+      } finally {
+        if (!cancelled) setCheckingRecovery(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, driveConnected]);
 
   const patchSettings = async (patch: Partial<SettingsState>) => {
     const next = await Settings.update(patch);
@@ -239,17 +266,63 @@ export default function StorageSecuritySettings() {
         <Animated.View entering={FadeInDown.delay(140).duration(220)} style={{ marginTop: spacing.lg }}>
           <SectionHeader title="Security" />
           <Card variant="elevated" style={{ padding: 0 }}>
+            {/* Recovery status header */}
+            <View style={styles.recoveryHeader} testID="recovery-status-row">
+              {recoveryDrive ? (
+                <View style={[styles.recoveryBadge, { backgroundColor: t.accentSurface, borderColor: t.accent }]}>
+                  <ShieldCheck color={t.accent} size={16} strokeWidth={2} />
+                  <Text style={[styles.recoveryBadgeTxt, { color: t.accent }]}>Recovery configured</Text>
+                </View>
+              ) : (
+                <View style={[styles.recoveryBadge, { backgroundColor: colors.expiringSurface, borderColor: colors.expiringSoon }]}>
+                  <AlertTriangle color="#8E6A20" size={16} strokeWidth={2} />
+                  <Text style={[styles.recoveryBadgeTxt, { color: '#8E6A20' }]}>Recovery not configured</Text>
+                </View>
+              )}
+              <Text style={styles.recoverySub}>
+                {checkingRecovery
+                  ? 'Checking Google Drive…'
+                  : recoveryDrive
+                    ? `Envelope rev. ${recoveryDrive.revision} · updated ${new Date(recoveryDrive.updatedAt).toLocaleDateString()}`
+                    : driveConnected
+                      ? 'No recovery envelope in your Drive. Set one up so a new phone can restore this vault.'
+                      : 'Connect Google Drive to use recovery.'}
+              </Text>
+            </View>
+            <Divider />
+            {!recoveryDrive ? (
+              <Row
+                icon={<KeyRound color={t.accent} size={18} />}
+                title="Set Up Recovery"
+                subtitle="Wrap your vault key with a Recovery Password"
+                accent={t.accentSurface}
+                chevron
+                testID="settings-set-up-recovery"
+                onPress={() => router.push('/recovery/setup')}
+              />
+            ) : (
+              <Row
+                icon={<KeyRound color={t.accent} size={18} />}
+                title="Change Recovery Password"
+                subtitle="Re-wrap the same vault key with a new password"
+                accent={t.accentSurface}
+                chevron
+                testID="settings-change-recovery"
+                onPress={() => router.push('/recovery/change')}
+              />
+            )}
+            <Divider />
             <Row
-              icon={<KeyRound color={t.accent} size={18} />}
-              title="Recovery Password"
-              subtitle="Change your recovery password"
+              icon={<Info color={t.accent} size={18} />}
+              title="Recovery information"
+              subtitle="How your key envelope keeps SafeVault zero-knowledge"
               accent={t.accentSurface}
-              testID="settings-change-password"
               chevron
+              testID="settings-recovery-info"
               onPress={() =>
                 placeholder(
-                  'Change Recovery Password',
-                  'The full change-password flow will be enabled in the Recovery Sprint. Your current password is already stored securely on this device.',
+                  'How recovery works',
+                  'Your Recovery Password derives a Key Encryption Key (KEK) via PBKDF2 (210 000 iterations). The KEK wraps your vault key with AES-256-CBC and the wrapped result is stored inside your Google Drive at SafeVault/manifest/recovery.json. A separate verifier tag detects wrong passwords BEFORE any decryption. Neither the password nor the vault key ever leave this device.',
                 )
               }
             />
@@ -269,9 +342,7 @@ export default function StorageSecuritySettings() {
             <Row
               icon={<Timer color={t.accent} size={18} />}
               title="Auto Lock"
-              subtitle={
-                settings.autoLock === 'off' ? 'Off' : `After ${settings.autoLock}`
-              }
+              subtitle={settings.autoLock === 'off' ? 'Off' : `After ${settings.autoLock}`}
               accent={t.accentSurface}
               chevron
               testID="settings-autolock"
@@ -293,7 +364,7 @@ export default function StorageSecuritySettings() {
               onPress={() =>
                 placeholder(
                   'Export Recovery Kit',
-                  'The Recovery Kit will include a printable PDF and QR code containing everything a new phone needs to unlock this vault. Watch for it in the Recovery Sprint.',
+                  'A printable PDF that records your envelope location and a wrong-password-safe verification tag. Never contains your password or vault key. Deferred to a follow-up sprint pending secure-PDF review.',
                 )
               }
             />
@@ -308,7 +379,7 @@ export default function StorageSecuritySettings() {
               onPress={() =>
                 placeholder(
                   'Emergency Recovery',
-                  'Emergency Recovery will let you nominate a trusted contact who can help you recover your vault if something happens to you. Not enabled yet.',
+                  'Nominate a trusted contact who can help you recover your vault via a Shamir-shared secret. Not enabled yet — planned as a dedicated follow-up sprint.',
                 )
               }
             />
@@ -556,4 +627,9 @@ const styles = StyleSheet.create({
   segItemTxt: { ...typography.caption, fontWeight: '800', letterSpacing: 0.3 },
 
   dangerCard: { borderColor: colors.overdueSurface, backgroundColor: colors.expiredSurface },
+
+  recoveryHeader: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.sm, gap: 6 },
+  recoveryBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill, borderWidth: 1 },
+  recoveryBadgeTxt: { ...typography.caption, fontWeight: '800' },
+  recoverySub: { ...typography.caption, color: colors.textSecondary, marginTop: 2, lineHeight: 17 },
 });

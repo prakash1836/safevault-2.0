@@ -29,6 +29,9 @@ export default function RootLayout() {
                     <Stack.Screen name="family" />
                     <Stack.Screen name="settings/theme" />
                     <Stack.Screen name="settings/storage-security" />
+                    <Stack.Screen name="recovery/setup" />
+                    <Stack.Screen name="recovery/restore" />
+                    <Stack.Screen name="recovery/change" />
                   </Stack>
                 </UploadProvider>
               </VaultProvider>

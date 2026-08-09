@@ -33,3 +33,28 @@ awareness and document accessibility. All prior work in place.
 - Change Recovery Password full flow (button opens explainer sheet).
 - Recovery-driven multi-device (`deriveWrappingKey` stubbed, throws until wired).
 - Pricing purchases (Free / Premium / Family cards render, purchase not wired).
+
+## Sprint 4 — Recovery Foundation (2026-01)
+
+### Cryptographic architecture
+Recovery Password → PBKDF2-SHA256(210 000) → 64 bytes → split into KEK (bytes 0..32) + Verifier (bytes 32..64).
+KEK wraps the *existing* DEK with AES-256-CBC + random IV. Wrapped result + verifier + KDF params stored as plain JSON at `SafeVault/manifest/recovery.json`. The DEK itself is never changed → existing ciphertext remains readable.
+
+### Files added
+- `src/services/recovery.ts` — envelope build/save/load, wrap/unwrap, setup, restore, change-password. Idempotent, side-effect-free on wrong password.
+- `app/recovery/setup.tsx` — set-up screen.
+- `app/recovery/restore.tsx` — new-device restore screen.
+- `app/recovery/change.tsx` — change-password screen.
+- `__tests__/recovery.test.mjs` — 15 pure-crypto unit tests.
+- `docs/RECOVERY.md` — full architectural write-up.
+
+### Files modified
+- `app/_layout.tsx` — registered 3 recovery routes.
+- `app/login.tsx` — "Restore from Google Drive" entry.
+- `app/settings/storage-security.tsx` — real recovery status badge, real "Set Up Recovery" / "Change Recovery Password" / "Recovery information" rows.
+
+### Placeholders deferred
+- Export Recovery Kit (PDF)
+- Emergency Recovery (Shamir-shared secret)
+- Biometric Unlock + Auto Lock
+- Rate-limit on wrong password
