@@ -336,6 +336,37 @@ export async function saveEnvelope(user: AuthUser, env: RecoveryEnvelope): Promi
   return { fileId };
 }
 
+/**
+ * Cheap Drive metadata fetch — returns the primary envelope's revision and
+ * updatedAt WITHOUT downloading the ciphertext body. Used by the cross-device
+ * change watcher on app open, which runs on every foreground.
+ */
+export async function fetchEnvelopeMetadata(user: AuthUser): Promise<
+  { revision: number; updatedAt: string; vaultId: string; fileId: string } | null
+> {
+  const primary = await findEnvelope(user, RECOVERY_FILE_NAME);
+  if (!primary) return null;
+  const revStr = primary.appProperties?.['safevault.revision'];
+  const updatedAt = primary.appProperties?.['safevault.updatedAt'];
+  if (!revStr || !updatedAt) {
+    // Legacy envelope without tags — fall back to a full download once.
+    const full = await fetchEnvelope(user);
+    if (!full) return null;
+    return {
+      revision: full.envelope.revision,
+      updatedAt: full.envelope.updatedAt,
+      vaultId: full.envelope.vaultId,
+      fileId: full.fileId,
+    };
+  }
+  return {
+    revision: Number(revStr),
+    updatedAt,
+    vaultId: 'sv_' + (user.id || 'anon'),
+    fileId: primary.id,
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /* High-level flows                                                           */
 /* -------------------------------------------------------------------------- */
@@ -481,6 +512,7 @@ export const Recovery = {
   buildEnvelope,
   checkPassword,
   fetchEnvelope,
+  fetchEnvelopeMetadata,
   saveEnvelope,
   setupRecovery,
   restoreVault,

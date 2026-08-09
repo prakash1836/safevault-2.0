@@ -14,6 +14,7 @@ import { IconButton, PrimaryButton } from '../../src/components/UI';
 import { PressableScale } from '../../src/components/PressableScale';
 import { InfoSheet, SheetParagraph, SheetHeading } from '../../src/components/InfoSheet';
 import { Recovery } from '../../src/services/recovery';
+import { RecoveryChangeWatcher } from '../../src/services/recoveryChangeWatcher';
 import { RecoveryPassword, evaluatePasswordStrength, MIN_PASSWORD_LENGTH } from '../../src/services/recoveryPassword';
 import { colors, radius, spacing, shadow, typography } from '../../src/constants/theme';
 import { hapt } from '../../src/utils/haptics';
@@ -60,6 +61,18 @@ export default function RecoverySetup() {
       // future "verify current password" flows can operate offline.
       await RecoveryPassword.set(password);
       const r = await Recovery.setupRecovery({ user, password });
+      // Anchor the change-watcher baseline so future cross-device changes are
+      // detected relative to this successful setup.
+      try {
+        const meta = await Recovery.fetchEnvelopeMetadata(user);
+        if (meta) {
+          await RecoveryChangeWatcher.acknowledgeRevision({
+            vaultId: meta.vaultId,
+            revision: meta.revision,
+            updatedAt: meta.updatedAt,
+          });
+        }
+      } catch { /* non-fatal — banner may trigger next time */ }
       hapt.success();
       Alert.alert(
         r.alreadySetUp ? 'Recovery already configured' : 'Recovery configured',

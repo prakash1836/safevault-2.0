@@ -1,0 +1,66 @@
+{
+  "summary": "Verification-only task for SafeVault (React Native/Expo mobile app). Ran all 6 .mjs unit-test files with node, ran tsc --noEmit, and ran expo export --platform web. All commands exited 0. Total unit tests: 52 passed, 0 failed across 6 files. All required test-name invariants for recovery, recoveryRateLimit, and change-watcher are present and passing. Expo web export emitted all 4 required static routes.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "verification_results": {
+    "unit_tests": {
+      "documentContent.test.mjs": "5/5 passed",
+      "manifest.test.mjs": "7/7 passed",
+      "recovery.test.mjs": "15/15 passed",
+      "recoveryRateLimit.test.mjs": "14/14 passed",
+      "uploadCoordinator.test.mjs": "4/4 passed",
+      "uploadQueue.test.mjs": "7/7 passed",
+      "total": "52/52 passed, exit 0"
+    },
+    "typescript": "npx tsc --noEmit -> exit 0, zero errors",
+    "expo_export": {
+      "exit_code": 0,
+      "output_dir": "/tmp/expo-web-build-verify",
+      "required_routes_all_present": true,
+      "routes_confirmed": ["/recovery/setup", "/recovery/restore", "/recovery/change", "/settings/storage-security"],
+      "total_static_routes": 25,
+      "bundle_size": "4.63 MB"
+    },
+    "recovery_invariants_confirmed": {
+      "deriveKekAndVerifier_is_deterministic": true,
+      "wrap_then_unwrap_yields_original_DEK": true,
+      "checkPassword_wrong_password_reason_wrong_password": true,
+      "change_password_rewraps_same_DEK_with_new_KEK": true,
+      "lower_iteration_count_backwards_compat": true
+    },
+    "rate_limit_invariants_confirmed": {
+      "attempts_1_to_3_no_lockout": true,
+      "attempt_4_is_30s": true,
+      "attempts_ge_8_capped_at_24h": true,
+      "backoff_strictly_monotonic_from_attempt_4": true
+    },
+    "change_watcher_invariants_confirmed": {
+      "no_last_seen_not_changed": true,
+      "drive_revision_higher_changed": true,
+      "same_revision_different_updatedAt_changed_defensive": true,
+      "drive_revision_lower_not_changed_rollback_ignored": true
+    }
+  },
+  "not_automatable_flagged": [
+    "New-device restore against real Google Drive (requires Google Sign-In credentials)",
+    "Tampered recovery envelope over the network (requires real Drive)",
+    "Interrupted recovery / cross-device end-to-end (requires two real Android devices with Dev Client APK)"
+  ],
+  "test_report_links": [
+    "/app/frontend/__tests__/recovery.test.mjs",
+    "/app/frontend/__tests__/recoveryRateLimit.test.mjs",
+    "/app/frontend/__tests__/manifest.test.mjs",
+    "/app/frontend/__tests__/uploadCoordinator.test.mjs",
+    "/app/frontend/__tests__/uploadQueue.test.mjs",
+    "/app/frontend/__tests__/documentContent.test.mjs"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "N/A (mobile app, no web runtime)"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "This is a React Native (Expo) Android app. Do NOT run Playwright/browser tests. Verification is done via: (1) node __tests__/*.mjs, (2) npx tsc --noEmit, (3) npx expo export --platform web. Google Drive-dependent flows cannot be automated in this container.",
+  "rca of the issue": "N/A — verification-only task, no issues found."
+}

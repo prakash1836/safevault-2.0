@@ -12,6 +12,7 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import { IconButton, PrimaryButton } from '../../src/components/UI';
 import { PressableScale } from '../../src/components/PressableScale';
 import { Recovery } from '../../src/services/recovery';
+import { RecoveryChangeWatcher } from '../../src/services/recoveryChangeWatcher';
 import { RecoveryPassword, evaluatePasswordStrength, MIN_PASSWORD_LENGTH } from '../../src/services/recoveryPassword';
 import { colors, radius, spacing, typography } from '../../src/constants/theme';
 import { hapt } from '../../src/utils/haptics';
@@ -59,6 +60,17 @@ export default function RecoveryChange() {
       }
       // Update the on-device password hash too (Sprint 3 mechanism)
       try { await RecoveryPassword.change(current, next); } catch { await RecoveryPassword.set(next); }
+      // Re-anchor the change-watcher baseline now that revision has bumped.
+      try {
+        const meta = await Recovery.fetchEnvelopeMetadata(user);
+        if (meta) {
+          await RecoveryChangeWatcher.acknowledgeRevision({
+            vaultId: meta.vaultId,
+            revision: meta.revision,
+            updatedAt: meta.updatedAt,
+          });
+        }
+      } catch {}
       hapt.success();
       Alert.alert(
         'Recovery Password changed',

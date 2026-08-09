@@ -37,6 +37,7 @@ import { StoragePreference, type StorageMode } from '../../src/services/storageP
 import { Settings, type SettingsState } from '../../src/services/settings';
 import { RecoveryPassword } from '../../src/services/recoveryPassword';
 import { Recovery } from '../../src/services/recovery';
+import { RecoveryChangeWatcher } from '../../src/services/recoveryChangeWatcher';
 import { colors, radius, spacing, typography, shadow } from '../../src/constants/theme';
 import { hapt } from '../../src/utils/haptics';
 
@@ -52,8 +53,9 @@ export default function StorageSecuritySettings() {
   const [busy, setBusy] = useState<string | null>(null);
   const [showPlaceholder, setShowPlaceholder] = useState<null | { title: string; body: string }>(null);
   const [recoveryLocal, setRecoveryLocal] = useState<boolean>(false);
-  const [recoveryDrive, setRecoveryDrive] = useState<null | { revision: number; updatedAt: string }>(null);
+  const [recoveryDrive, setRecoveryDrive] = useState<null | { revision: number; updatedAt: string; vaultId: string }>(null);
   const [checkingRecovery, setCheckingRecovery] = useState<boolean>(false);
+  const [crossDeviceChanged, setCrossDeviceChanged] = useState<boolean>(false);
 
   useEffect(() => {
     (async () => {
@@ -77,16 +79,37 @@ export default function StorageSecuritySettings() {
     (async () => {
       setCheckingRecovery(true);
       try {
-        const found = await Recovery.fetchEnvelope(user);
-        if (!cancelled) setRecoveryDrive(found ? { revision: found.envelope.revision, updatedAt: found.envelope.updatedAt } : null);
+        const meta = await Recovery.fetchEnvelopeMetadata(user);
+        if (cancelled) return;
+        if (meta) {
+          setRecoveryDrive({ revision: meta.revision, updatedAt: meta.updatedAt, vaultId: meta.vaultId });
+          const lastSeen = await RecoveryChangeWatcher.getLastSeen(meta.vaultId);
+          setCrossDeviceChanged(
+            RecoveryChangeWatcher.isChanged(lastSeen, { revision: meta.revision, updatedAt: meta.updatedAt }),
+          );
+        } else {
+          setRecoveryDrive(null);
+          setCrossDeviceChanged(false);
+        }
       } catch {
-        if (!cancelled) setRecoveryDrive(null);
+        if (!cancelled) { setRecoveryDrive(null); setCrossDeviceChanged(false); }
       } finally {
         if (!cancelled) setCheckingRecovery(false);
       }
     })();
     return () => { cancelled = true; };
   }, [user?.id, driveConnected]);
+
+  const onAcknowledgeChange = async () => {
+    if (!recoveryDrive) return;
+    hapt.light();
+    await RecoveryChangeWatcher.acknowledgeRevision({
+      vaultId: recoveryDrive.vaultId,
+      revision: recoveryDrive.revision,
+      updatedAt: recoveryDrive.updatedAt,
+    });
+    setCrossDeviceChanged(false);
+  };
 
   const patchSettings = async (patch: Partial<SettingsState>) => {
     const next = await Settings.update(patch);
@@ -265,6 +288,25 @@ export default function StorageSecuritySettings() {
         {/* SECURITY */}
         <Animated.View entering={FadeInDown.delay(140).duration(220)} style={{ marginTop: spacing.lg }}>
           <SectionHeader title="Security" />
+          {crossDeviceChanged && recoveryDrive && (
+            <PressableScale onPress={() => router.push('/recovery/restore')} haptic="light" testID="cross-device-changed-banner">
+              <View style={[styles.crossBanner, { backgroundColor: colors.expiringSurface, borderColor: colors.expiringSoon }]}>
+                <AlertTriangle color="#8E6A20" size={18} strokeWidth={1.8} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.crossBannerTitle}>Recovery password changed on another device</Text>
+                  <Text style={styles.crossBannerBody}>
+                    A different device updated the recovery envelope (rev. {recoveryDrive.revision} · {new Date(recoveryDrive.updatedAt).toLocaleString()}). Re-verify this device to keep future restores working.
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                    <Text style={styles.crossBannerLink}>Re-verify now →</Text>
+                    <PressableScale onPress={onAcknowledgeChange} haptic="light" testID="cross-device-dismiss">
+                      <Text style={[styles.crossBannerLink, { color: colors.textSecondary }]}>Dismiss</Text>
+                    </PressableScale>
+                  </View>
+                </View>
+              </View>
+            </PressableScale>
+          )}
           <Card variant="elevated" style={{ padding: 0 }}>
             {/* Recovery status header */}
             <View style={styles.recoveryHeader} testID="recovery-status-row">
@@ -632,4 +674,9 @@ const styles = StyleSheet.create({
   recoveryBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill, borderWidth: 1 },
   recoveryBadgeTxt: { ...typography.caption, fontWeight: '800' },
   recoverySub: { ...typography.caption, color: colors.textSecondary, marginTop: 2, lineHeight: 17 },
+
+  crossBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, marginBottom: spacing.sm },
+  crossBannerTitle: { ...typography.bodySm, fontWeight: '800', color: colors.textPrimary },
+  crossBannerBody: { ...typography.caption, color: colors.textPrimary, marginTop: 4, lineHeight: 18 },
+  crossBannerLink: { ...typography.caption, fontWeight: '800', color: '#8E6A20' },
 });

@@ -15,7 +15,7 @@ import { View, Text, StyleSheet, ScrollView, Alert, TextInput, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import { ChevronLeft, Lock, Eye, EyeOff, Cloud, ShieldCheck, KeyRound, CheckCircle2, AlertTriangle, Info, RefreshCw } from 'lucide-react-native';
+import { ChevronLeft, Lock, Eye, EyeOff, Cloud, ShieldCheck, KeyRound, CheckCircle2, AlertTriangle, Info, RefreshCw, Timer } from 'lucide-react-native';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { usePermissions } from '../../src/contexts/PermissionsContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -23,6 +23,10 @@ import { IconButton, PrimaryButton, ProgressBar } from '../../src/components/UI'
 import { PressableScale } from '../../src/components/PressableScale';
 import { InfoSheet, SheetParagraph, SheetHeading } from '../../src/components/InfoSheet';
 import { Recovery, type RecoveryEnvelope } from '../../src/services/recovery';
+import { RecoveryRateLimit, type LockoutStatus } from '../../src/services/recoveryRateLimit';
+import { RecoveryChangeWatcher } from '../../src/services/recoveryChangeWatcher';
+import { MetadataManager } from '../../src/services/metadataManager';
+import { getDeviceId, getAppVersion } from '../../src/services/device';
 import { colors, radius, spacing, typography, shadow } from '../../src/constants/theme';
 import { hapt } from '../../src/utils/haptics';
 
@@ -32,9 +36,11 @@ type Phase =
   | { kind: 'not-found' }
   | { kind: 'no-drive' }
   | { kind: 'corrupted' }
+  | { kind: 'locked'; status: LockoutStatus; envelope: RecoveryEnvelope }
   | { kind: 'found'; envelope: RecoveryEnvelope }
   | { kind: 'unlocking' }
-  | { kind: 'restored' };
+  | { kind: 'restoring'; label: string; progress: number; docCount: number }
+  | { kind: 'restored'; docCount: number };
 
 export default function RecoveryRestore() {
   const t = useTheme();
@@ -65,6 +71,12 @@ export default function RecoveryRestore() {
     try {
       const fetched = await Recovery.fetchEnvelope(user);
       if (!fetched) { setPhase({ kind: 'not-found' }); return; }
+      // Check for a live lockout on this vault BEFORE letting the user try.
+      const status = await RecoveryRateLimit.getStatus(fetched.envelope.vaultId);
+      if (status.locked) {
+        setPhase({ kind: 'locked', status, envelope: fetched.envelope });
+        return;
+      }
       setPhase({ kind: 'found', envelope: fetched.envelope });
     } catch (e: any) {
       if (e?.code === 'RecoveryEnvelopeCorruptedError') {
@@ -91,31 +103,85 @@ export default function RecoveryRestore() {
     if (!user || phase.kind !== 'found') return;
     if (!password.trim()) return;
     hapt.light();
+    const envelope = phase.envelope;
+
+    // Pre-check: still locked? (Guards against manual clock manipulation
+    // between screen mount and submit.)
+    const preStatus = await RecoveryRateLimit.getStatus(envelope.vaultId);
+    if (preStatus.locked) {
+      setPhase({ kind: 'locked', status: preStatus, envelope });
+      return;
+    }
+
     setPhase({ kind: 'unlocking' });
     try {
       const r = await Recovery.restoreVault({ user, password, commit: true });
-      if (r.ok) {
-        hapt.success();
-        setPhase({ kind: 'restored' });
-      } else {
+      if (!r.ok) {
         hapt.error();
         setWrongCount((c) => c + 1);
         if (r.reason === 'wrong-password') {
-          setPhase({ kind: 'found', envelope: phase.envelope });
-          Alert.alert(
-            'Incorrect Recovery Password',
-            'Your vault has not been changed. Please try again.',
-          );
+          const status = await RecoveryRateLimit.recordFailure(envelope.vaultId);
+          if (status.locked) {
+            setPhase({ kind: 'locked', status, envelope });
+          } else {
+            setPhase({ kind: 'found', envelope });
+            Alert.alert(
+              'Incorrect Recovery Password',
+              `Your vault has not been changed. You have ${3 - status.attempts} attempt(s) remaining before a lockout begins.`,
+            );
+          }
         } else if (r.reason === 'corrupted') {
           setPhase({ kind: 'corrupted' });
         } else {
           setPhase({ kind: 'not-found' });
         }
+        return;
       }
+
+      // Success → clear the counter, then run the restore-progress phase.
+      await RecoveryRateLimit.recordSuccess(envelope.vaultId);
+
+      setPhase({ kind: 'restoring', label: 'Loading your vault index…', progress: 0.15, docCount: 0 });
+      const deviceId = await getDeviceId();
+      const appVersion = getAppVersion();
+
+      let docCount = 0;
+      try {
+        setPhase({ kind: 'restoring', label: 'Downloading manifest…', progress: 0.35, docCount });
+        const loaded = await MetadataManager.load(user, deviceId, appVersion);
+        docCount = loaded.manifest.documents.filter((d: any) => !d.deleted).length;
+        setPhase({
+          kind: 'restoring',
+          label: loaded.isEmpty
+            ? 'Vault is empty — nothing to restore.'
+            : loaded.recovered
+              ? `Recovered from backup manifest · ${docCount} documents`
+              : `Loaded ${docCount} documents from Drive`,
+          progress: 0.85,
+          docCount,
+        });
+        // Acknowledge the envelope revision — this is the anchor point for
+        // the cross-device change watcher.
+        await RecoveryChangeWatcher.acknowledgeRevision({
+          vaultId: envelope.vaultId,
+          revision: envelope.revision,
+          updatedAt: envelope.updatedAt,
+        });
+      } catch (mfErr: any) {
+        // Manifest failure is not fatal — the DEK is in place; documents will
+        // populate on the next sync attempt. Surface a soft warning.
+        // eslint-disable-next-line no-console
+        console.warn('[recovery] manifest load failed:', mfErr?.message);
+      }
+
+      // Small settle so the "loaded X documents" line is readable.
+      await new Promise((r2) => setTimeout(r2, 400));
+      hapt.success();
+      setPhase({ kind: 'restored', docCount });
     } catch (e: any) {
       hapt.error();
       Alert.alert('Recovery failed', e?.message || 'Please try again.');
-      setPhase(phase);
+      setPhase({ kind: 'found', envelope });
     }
   };
 
@@ -278,16 +344,56 @@ export default function RecoveryRestore() {
           </Animated.View>
         )}
 
+        {/* Restoring — progress after unlock */}
+        {phase.kind === 'restoring' && (
+          <Animated.View entering={FadeIn.duration(220)} style={styles.centerBig} testID="recovery-restoring">
+            <View style={[styles.doneIconWrap, { backgroundColor: t.accent }]}>
+              <ActivityIndicator color="#fff" />
+            </View>
+            <Text style={[styles.doneTitle, { color: t.accent, textAlign: 'center' }]}>Restoring your vault…</Text>
+            <Text style={styles.doneBody} testID="recovery-restoring-label">{phase.label}</Text>
+            <View style={{ width: '100%', maxWidth: 300, marginTop: spacing.md }}>
+              <ProgressBar value={phase.progress} height={6} color={t.accent} />
+            </View>
+            {phase.docCount > 0 && (
+              <Text style={[styles.doneBody, { marginTop: 4 }]} testID="recovery-restoring-count">
+                {phase.docCount} document{phase.docCount === 1 ? '' : 's'}
+              </Text>
+            )}
+          </Animated.View>
+        )}
+
+        {/* Locked — after too many wrong-password attempts */}
+        {phase.kind === 'locked' && (
+          <Animated.View entering={FadeInDown.duration(220)} testID="recovery-locked">
+            <Hero
+              accent={colors.expired}
+              accentSurface={colors.expiredSurface}
+              icon={<AlertTriangle color={colors.expired} size={26} />}
+              title="Too many failed attempts"
+              body="For safety, try again after the cooldown below. Your vault is not modified — this lockout is device-local."
+            />
+            <View style={{ marginTop: spacing.lg, alignItems: 'center' }}>
+              <LockoutCountdown
+                status={phase.status}
+                onExpired={() => setPhase({ kind: 'found', envelope: phase.envelope })}
+              />
+            </View>
+          </Animated.View>
+        )}
+
         {/* Restored */}
         {phase.kind === 'restored' && (
-          <Animated.View entering={FadeIn.duration(300)}>
+          <Animated.View entering={FadeIn.duration(300)} testID="recovery-restored">
             <View style={[styles.done, { backgroundColor: t.accentSurface }]}>
               <View style={[styles.doneIconWrap, { backgroundColor: t.accent }]}>
                 <CheckCircle2 color="#fff" size={30} strokeWidth={1.8} />
               </View>
               <Text style={[styles.doneTitle, { color: t.accent }]}>Vault Restored</Text>
-              <Text style={styles.doneBody}>
-                Your encryption key has been unwrapped and stored securely on this device. Documents will appear as SafeVault pulls the metadata from Drive.
+              <Text style={styles.doneBody} testID="recovery-restored-count">
+                {phase.docCount > 0
+                  ? `Loaded ${phase.docCount} document${phase.docCount === 1 ? '' : 's'} from your Drive.`
+                  : 'Your vault key has been unwrapped and stored securely on this device.'}
               </Text>
               <Text style={[styles.doneBody, { marginTop: spacing.sm }]}>
                 Documents remain encrypted in Drive — they are downloaded and decrypted only when you open them.
@@ -330,6 +436,48 @@ function Hero({ icon, title, body, accent, accentSurface }: any) {
       <View style={[styles.heroIcon, { backgroundColor: accent }]}>{icon}</View>
       <Text style={[styles.heroTitle, { color: accent }]}>{title}</Text>
       <Text style={styles.heroBody}>{body}</Text>
+    </View>
+  );
+}
+
+function LockoutCountdown({ status, onExpired }: { status: LockoutStatus; onExpired: () => void }) {
+  const [remaining, setRemaining] = React.useState(status.remainingMs);
+  React.useEffect(() => {
+    setRemaining(status.remainingMs);
+  }, [status.remainingMs]);
+  React.useEffect(() => {
+    if (remaining <= 0) { onExpired(); return; }
+    const iv = setInterval(() => {
+      setRemaining((r) => {
+        const next = Math.max(0, r - 1000);
+        if (next === 0) { clearInterval(iv); onExpired(); }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.remainingMs]);
+
+  const fmt = (ms: number) => {
+    const s = Math.ceil(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rs = s % 60;
+    if (m < 60) return `${m}m ${rs.toString().padStart(2, '0')}s`;
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return `${h}h ${rm.toString().padStart(2, '0')}m`;
+  };
+
+  return (
+    <View style={[styles.done, { backgroundColor: colors.expiredSurface, paddingVertical: spacing.lg }]}>
+      <View style={[styles.doneIconWrap, { backgroundColor: colors.expired }]}>
+        <Timer color="#fff" size={26} strokeWidth={1.8} />
+      </View>
+      <Text style={[styles.doneTitle, { color: colors.expired }]} testID="lockout-remaining">{fmt(remaining)}</Text>
+      <Text style={styles.doneBody}>
+        Attempt {status.attempts} of your recovery password was incorrect. Please wait before trying again.
+      </Text>
     </View>
   );
 }
