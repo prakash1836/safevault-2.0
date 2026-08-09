@@ -94,3 +94,40 @@ KEK wraps the *existing* DEK with AES-256-CBC + random IV. Wrapped result + veri
 - AES-CBC → AES-GCM migration for envelope (schema-v2 with MAC) — future sprint.
 - Rollback attack (attacker swaps recovery.json with old recovery.bak) — future rev-forward-only enforcement.
 - Real-device restore over Drive — requires Google Sign-In, not automatable in this container.
+
+## Sprint 6 — Recovery Security Finalization (2026-01)
+
+### Schema-v2 design
+- PBKDF2 output extended from 64 to 96 bytes → KEK(0..32) + Verifier(32..64) + MAC_KEY(64..96).
+- First 64 bytes bit-identical to v1 → deterministic migration.
+- HMAC-SHA256 over canonical `|`-separated input covering schema, vaultId, revision, kdf.{alg,iters,saltHex,outputBytes}, wrappedKey.{alg,ivHex,ciphertext}, verifierHex. createdAt/updatedAt excluded (not security-relevant).
+- Constant-time MAC compare via `constantTimeEqualHex`.
+
+### Verification pipeline (invariant)
+validate → PBKDF2 → verifier compare → HMAC constant-time compare → AES unwrap → 32-byte DEK sanity → install. Any earlier failure → DEK untouched, Drive untouched.
+
+### v1 → v2 migration
+Same salt/iters → same first 64 bytes → same KEK/verifier/wrappedKey preserved verbatim. Only MAC field is added. createdAt/updatedAt/revision all preserved. Crash-safe: if the v2 upload fails, v1 remains at `recovery.json` and next restore retries.
+
+### Rollback protection
+Version-neutral key `safevault.recovery.highest.revision.<vaultId>` in SecureStore. `checkRollback` rejects envelope.revision < localHigh. Updated ONLY after full verification.
+
+### Files changed
+- Rewritten: src/services/recovery.ts (743 lines)
+- Updated: app/recovery/restore.tsx (handle 'tampered' and 'rollback' reasons)
+- Updated: app/recovery/change.tsx (handle 'tampered')
+- Added: __tests__/recoveryV2.test.mjs (30 tests)
+- Added: docs/QA_RECOVERY.md (physical-device checklist, not executed here)
+
+### Test results (verified by testing_agent iteration_13)
+- 82 unit tests pass, 0 failed across 7 files
+- tsc --noEmit: 0 errors
+- Metro/Expo export: 25 routes, all recovery routes present
+
+### Physical-device QA
+- NOT executed in this container (no Android, no real Drive account)
+- Checklist prepared at docs/QA_RECOVERY.md with 30+ steps covering: Device A vault setup, Device B new-device restore, wrong password, lockout ladder, network off, corrupted primary + backup, tampered MAC, rollback, cross-device change detection, multi-device sync, and DEK preservation across password change
+
+### Remaining limitations
+- New-device rollback: fresh install has no localHigh → relies on MAC + password. Documented.
+- AES-CBC on documents remains (envelope is now authenticated; document ciphertext migration deferred as it requires re-encrypting all docs).
