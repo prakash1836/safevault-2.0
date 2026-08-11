@@ -40,7 +40,8 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-font",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true
