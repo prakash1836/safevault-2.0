@@ -1,5 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Image } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Image,
+  useWindowDimensions,
+} from 'react-native';;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Calendar, Cake, Stethoscope, FileText, AlertCircle, Clock, ChevronRight } from 'lucide-react-native';
@@ -22,11 +29,19 @@ export default function Timeline() {
   const { docs, events, family, loading } = useVault();
   const t = useTheme();
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const [view, setView] = useState<ViewMode>('all');
   const [memberFilter, setMemberFilter] = useState<string | 'all'>('all');
+    
 
+    const horizontalPadding = spacing.xxl * 2;
+    const toggleWidth = Math.min(width - horizontalPadding, 300);
+    const toggleItemWidth = toggleWidth / 3;
   const items: Item[] = useMemo(() => {
     const out: Item[] = [];
+
+  
+
     docs.forEach((d) => {
       if (d.expiryDate) out.push({ id: 'd_' + d.id, docId: d.id, title: d.name + ' expires', date: d.expiryDate, kind: 'doc', sub: d.category, ownerId: d.ownerId });
     });
@@ -96,7 +111,7 @@ export default function Timeline() {
           )}
           {thisWeekCount > 0 && (
             <View style={[styles.statChip, { backgroundColor: colors.expiringSurface }]}>
-              <Clock color="#8E6A20" size={14} />
+              <Clock color="#dad4c9" size={14} />
               <Text style={[styles.statText, { color: '#8E6A20' }]}>{thisWeekCount} this week</Text>
             </View>
           )}
@@ -104,7 +119,7 @@ export default function Timeline() {
       )}
 
       {/* View toggle */}
-      <View style={styles.viewToggle} testID="timeline-view-toggle">
+      {/* <View style={styles.viewToggle} testID="timeline-view-toggle">
         {(['all', 'month', 'year'] as ViewMode[]).map((v) => (
           <PressableScale
             key={v}
@@ -119,8 +134,61 @@ export default function Timeline() {
             </View>
           </PressableScale>
         ))}
+      </View> */}
+      <View
+        style={[
+          styles.viewToggle,
+          {
+            width: toggleWidth,
+          },
+        ]}
+        testID="timeline-view-toggle"
+      >
+        {(['all', 'month', 'year'] as ViewMode[]).map((v) => (
+          <PressableScale
+            key={v}
+            onPress={() => {
+              hapt.selection();
+              setView(v);
+            }}
+            testID={`view-${v}`}
+            haptic="none"
+            style={[
+              styles.viewPressable,
+              {
+                width: toggleItemWidth,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.viewBtn,
+                view === v && { backgroundColor: t.accentDark },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.viewTxt,
+                  {
+                    color: view === v
+                      ? '#fff'
+                      : colors.textSecondary,
+                  },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
+                {v === 'all'
+                  ? 'All'
+                  : v === 'month'
+                    ? 'By Month'
+                    : 'By Year'}
+              </Text>
+            </View>
+          </PressableScale>
+        ))}
       </View>
-
       {/* Member filter */}
       <View style={styles.memberRow}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: spacing.xxl }}>
@@ -232,12 +300,38 @@ const styles = StyleSheet.create({
   statText: { ...typography.caption, fontWeight: '700' },
   
   // View toggle
-  viewToggle: { flexDirection: 'row', marginHorizontal: spacing.xxl, padding: 4, backgroundColor: colors.elevated, borderRadius: radius.pill, marginBottom: spacing.md },
-  viewBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: radius.pill },
+ viewToggle: {
+  flexDirection: 'row',
+  marginHorizontal: spacing.xxl,
+  padding: 4,
+  backgroundColor: colors.elevated,
+  borderRadius: radius.pill,
+  marginBottom: spacing.xl,
+  gap: 4,
+  
+  
+},
+viewPressable: {
+  flex: 1,
+},
+ viewBtn: {
+  width: '100%',
+  minHeight: 28,
+  alignItems: 'center',
+  justifyContent: 'center',
+  // paddingHorizontal: 8,
+  borderRadius: 4,
+  
+  borderWidth:1,
+  borderColor: colors.border,
+
+  
+  
+},
   viewTxt: { ...typography.bodySm, fontWeight: '700' },
   
   // Member filter
-  memberRow: { marginBottom: spacing.md },
+  memberRow: { margin: spacing.md, },
   
   // Content
   scroll: { paddingHorizontal: spacing.xxl, paddingBottom: 120 },
