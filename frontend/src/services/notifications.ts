@@ -5,7 +5,8 @@ import { differenceInSeconds, parseISO, setHours, setMinutes, setSeconds, setMil
 let configured = false;
 
 // Default local hour that reminders fire at (24h).
-export const DEFAULT_REMINDER_HOUR = 9;
+export const DEFAULT_REMINDER_HOUR = 16;
+export const DEFAULT_REMINDER_MINUTE = 30;
 
 export async function initNotifications() {
   if (configured) return;
@@ -32,7 +33,7 @@ export async function initNotifications() {
 
 /**
  * Schedule reminders at 30 / 7 / 1 day(s) before `dateISO`.
- * Fires at `atHour` local time (defaults to 9:00 AM). Past points are skipped.
+ * Fires at `atHour` local time (defaults to 16:30). Past points are skipped.
  * Returns the list of Expo notification IDs (persist alongside the doc/event id).
  */
 export async function scheduleReminders(
@@ -46,7 +47,7 @@ export async function scheduleReminders(
   const target = parseISO(dateISO);
   const now = new Date();
 
-  const atLocalTime = (d: Date) => setMilliseconds(setSeconds(setMinutes(setHours(d, atHour), 0), 0), 0);
+  const atLocalTime = (d: Date) => setMilliseconds(setSeconds(setMinutes(setHours(d, atHour), DEFAULT_REMINDER_MINUTE), 0), 0);
 
   const points: { when: Date; label: string }[] = [];
   if (opts.days30) points.push({ when: atLocalTime(subDays(target, 30)), label: '30 days left' });
