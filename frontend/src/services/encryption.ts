@@ -47,15 +47,26 @@ export async function deriveAndStoreKey(userId: string): Promise<string> {
 export async function getKey(): Promise<string | null> { return await secureStore.get(KEY_NAME); }
 export async function clearKey(): Promise<void> { await secureStore.del(KEY_NAME); }
 
-export function encryptBase64(base64: string, keyHex: string): string {
+export async function encryptBase64(base64: string, keyHex: string): Promise<string> {
   const key = CryptoJS.enc.Hex.parse(keyHex);
-  const iv = CryptoJS.lib.WordArray.random(16);
-  const wordArray = CryptoJS.enc.Base64.parse(base64);
-  const encrypted = CryptoJS.AES.encrypt(wordArray, key, { iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });
-  return iv.toString(CryptoJS.enc.Hex) + ':' + encrypted.toString();
-}
 
-export function decryptToBase64(payload: string, keyHex: string): string {
+  const randomBytes = await Crypto.getRandomBytesAsync(16);
+
+  const iv = CryptoJS.lib.WordArray.create(
+    Array.from(randomBytes)
+  );
+
+  const wordArray = CryptoJS.enc.Base64.parse(base64);
+
+  const encrypted = CryptoJS.AES.encrypt(wordArray, key, {
+    iv,
+    mode: CryptoJS.mode.CBC,
+    padding: CryptoJS.pad.Pkcs7,
+  });
+
+  return iv.toString(CryptoJS.enc.Hex) + ":" + encrypted.toString();
+}
+export async function decryptToBase64(payload: string, keyHex: string): Promise<string> {
   const [ivHex, ct] = payload.split(':');
   const key = CryptoJS.enc.Hex.parse(keyHex);
   const iv = CryptoJS.enc.Hex.parse(ivHex);
@@ -63,14 +74,14 @@ export function decryptToBase64(payload: string, keyHex: string): string {
   return decrypted.toString(CryptoJS.enc.Base64);
 }
 
-export function encryptJSON(obj: any, keyHex: string): string {
+export async function encryptJSON(obj: any, keyHex: string): Promise<string> {
   const json = JSON.stringify(obj);
   const b64 = CryptoJS.enc.Utf8.parse(json).toString(CryptoJS.enc.Base64);
-  return encryptBase64(b64, keyHex);
+  return await encryptBase64(b64, keyHex);
 }
 
-export function decryptJSON<T = any>(payload: string, keyHex: string): T {
-  const b64 = decryptToBase64(payload, keyHex);
+export async function decryptJSON<T = any>(payload: string, keyHex: string): Promise<T> {
+  const b64 = await decryptToBase64(payload, keyHex);
   const json = CryptoJS.enc.Base64.parse(b64).toString(CryptoJS.enc.Utf8);
   return JSON.parse(json) as T;
 }

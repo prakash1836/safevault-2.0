@@ -133,7 +133,7 @@ class Coordinator {
     // 1. Encrypt
     const key = await getKey();
     if (!key) throw new Error('Missing encryption key');
-    const cipher = encryptBase64(input.doc.fileBase64, key);
+    const cipher =await  encryptBase64(input.doc.fileBase64, key);
 
     // 2. Local encrypted cache (skipped when the user chose Drive-only)
     const localCipherPath = wantsLocal ? await saveEncryptedLocal(input.doc.id, cipher) : null;

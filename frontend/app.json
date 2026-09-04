@@ -41,7 +41,8 @@
       "expo-web-browser",
       "expo-font",
       "@react-native-google-signin/google-signin",
-      "expo-sqlite"
+      "expo-sqlite",
+       "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true
