@@ -18,7 +18,10 @@
         "backgroundColor": "#0F1F52"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.safevault.app"
+      "package": "com.safevault.app",
+      "permissions": [
+        "SCHEDULE_EXACT_ALARM"
+      ]
     },
     "web": {
       "bundler": "metro",

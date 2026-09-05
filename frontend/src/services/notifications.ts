@@ -20,10 +20,12 @@ export async function initNotifications() {
         shouldShowList: true,
       }),
     });
-    if (Platform.OS === 'android') {
+   if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('safevault', {
-        name: 'SafeVault',
-        importance: Notifications.AndroidImportance.DEFAULT,
+        name: 'SafeVault Reminders',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
       });
     }
     const perm = await Notifications.getPermissionsAsync();
@@ -58,17 +60,56 @@ export async function scheduleReminders(
     const secs = differenceInSeconds(p.when, now);
     if (secs <= 0) continue;
     try {
-      const nid = await Notifications.scheduleNotificationAsync({
-        content: { title: 'SafeVault Reminder', body: `${title} — ${p.label}`, data: { id } },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: secs,
-        } as any,
-      });
+     const nid = await Notifications.scheduleNotificationAsync({
+  content: {
+    title: 'SafeVault Reminder',
+    body: `${title} — ${p.label}`,
+    data: { id },
+    sound: 'default',
+  },
+  trigger: {
+    type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+    seconds: secs,
+    channelId: 'safevault',
+  },
+});
       ids.push(nid);
     } catch {}
   }
   return ids;
+}
+
+export async function testNotification() {
+  await initNotifications();
+
+  const testTime = new Date(Date.now() + 60 * 1000);
+
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'SafeVault Test',
+        body: 'Notification is working!',
+        sound: 'default',
+        data: {
+          id: 'test-notification',
+        },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: testTime,
+        channelId: 'safevault',
+      },
+    });
+
+    console.log('✅ TEST NOTIFICATION SCHEDULED');
+    console.log('Notification ID:', id);
+    console.log('Fires at:', testTime.toLocaleString());
+
+    return id;
+  } catch (error) {
+    console.error('❌ TEST NOTIFICATION FAILED:', error);
+    return null;
+  }
 }
 
 export async function cancelAllForId(ids: string[] = []) {
@@ -78,3 +119,5 @@ export async function cancelAllForId(ids: string[] = []) {
     } catch {}
   }
 }
+
+

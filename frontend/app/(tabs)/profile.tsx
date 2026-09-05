@@ -109,7 +109,14 @@ export default function Profile() {
           <RowItem icon={<HardDrive color={t.accent} size={18} strokeWidth={1.6} />} label="Storage & Security" onPress={() => router.push('/settings/storage-security')} testID="profile-storage-security-row" accent={t.accentSurface} />
           <RowItem icon={<Users color={t.accent} size={18} strokeWidth={1.6} />} label="Family Members" onPress={() => router.push('/family')} testID="profile-family-row" accent={t.accentSurface} />
           <RowItem icon={<Cloud color={t.accent} size={18} strokeWidth={1.6} />} label={drive ? 'Google Drive · Connected' : 'Connect Google Drive'} onPress={() => router.replace('/onboarding')} testID="profile-drive-row" accent={t.accentSurface} />
-          <RowItem icon={<Bell color={t.accent} size={18} strokeWidth={1.6} />} label="Reminder preferences" onPress={() => Alert.alert('Reminders', 'Each document can have 30‑day, 7‑day and 1‑day reminders. Configure per document.')} testID="profile-reminders-row" accent={t.accentSurface} />
+          {/* <RowItem icon={<Bell color={t.accent} size={18} strokeWidth={1.6} />} label="Reminder preferences" onPress={() => Alert.alert('Reminders', 'Each document can have 30‑day, 7‑day and 1‑day reminders. Configure per document.')} testID="profile-reminders-row" accent={t.accentSurface} /> */}
+          <RowItem
+  icon={<Bell color={t.accent} size={18} strokeWidth={1.6} />}
+  label="Reminder preferences"
+  onPress={() => router.push('/settings/notification-test')}
+  testID="profile-reminders-row"
+  accent={t.accentSurface}
+/>
           <RowItem icon={<ShieldCheck color={t.accent} size={18} strokeWidth={1.6} />} label="Encryption & Security" onPress={() => Alert.alert('Security', 'Files are encrypted with AES‑256 using a key derived from your identity and a device salt. The key is stored in the OS secure enclave.')} testID="profile-security-row" accent={t.accentSurface} />
           <RowItem icon={<Info color={t.accent} size={18} strokeWidth={1.6} />} label="About SafeVault" onPress={() => Alert.alert('SafeVault', 'Zero‑server, client‑encrypted document vault. Your data stays yours.')} testID="profile-about-row" accent={t.accentSurface} last />
         </Animated.View>
