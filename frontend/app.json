@@ -20,7 +20,7 @@
       "edgeToEdgeEnabled": true,
       "package": "com.safevault.app",
       "permissions": [
-        "SCHEDULE_EXACT_ALARM"
+        "android.permission.SCHEDULE_EXACT_ALARM"
       ]
     },
     "web": {

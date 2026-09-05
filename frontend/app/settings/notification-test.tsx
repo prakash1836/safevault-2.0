@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Button, StyleSheet } from 'react-native';
 import { testNotification } from '../../src/services/notifications';
 
+
 export default function NotificationTestScreen() {
   const handleTest = async () => {
     await testNotification();
@@ -21,9 +22,15 @@ export default function NotificationTestScreen() {
       </Text>
 
       <Button
-        title="TEST NOTIFICATION (1 MIN)"
+        title="TEST NOTIFICATION testing"
         onPress={handleTest}
       />
+      {/* <Button
+          title="Test Immediate Notification testing"
+          onPress={async () => {
+            await testImmediateNotification();
+          }}
+        /> */}
     </View>
   );
 }
