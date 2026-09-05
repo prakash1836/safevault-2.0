@@ -23,7 +23,7 @@ const AuthContext = createContext<AuthCtx | null>(null);
 
 const TOKEN_KEY = 'safevault.google.token';
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export  function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +31,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
 const hasGoogleConfig = !!webClientId;
+
+// useEffect(() => {
+//   debugNotifications();
+// }, []);
 
 console.log("WEB CLIENT =", webClientId);
 useEffect(() => {
@@ -48,6 +52,7 @@ useEffect(() => {
   useEffect(() => {
     (async () => {
       try {
+          
         const saved = await storage.getUser();
         if (saved) {
           // Verify encryption key exists

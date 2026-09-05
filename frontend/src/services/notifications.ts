@@ -82,33 +82,105 @@ export async function scheduleReminders(
 export async function testNotification() {
   await initNotifications();
 
-  const testTime = new Date(Date.now() + 60 * 1000);
-
   try {
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'SafeVault Test',
-        body: 'Notification is working!',
+        title: 'SafeVault Interval Test',
+        body: 'This should appear after 60 seconds.',
         sound: 'default',
         data: {
-          id: 'test-notification',
+          id: 'interval-test',
         },
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: testTime,
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 60,
         channelId: 'safevault',
       },
     });
 
-    console.log('✅ TEST NOTIFICATION SCHEDULED');
+    console.log('✅ INTERVAL NOTIFICATION SCHEDULED');
     console.log('Notification ID:', id);
-    console.log('Fires at:', testTime.toLocaleString());
+
+    const scheduled =
+      await Notifications.getAllScheduledNotificationsAsync();
+
+    console.log(
+      '📅 SCHEDULED:',
+      JSON.stringify(scheduled, null, 2)
+    );
 
     return id;
   } catch (error) {
-    console.error('❌ TEST NOTIFICATION FAILED:', error);
+    console.error('❌ INTERVAL TEST FAILED:', error);
     return null;
+  }
+}
+export async function testImmediateNotification() {
+  await initNotifications();
+
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'SafeVault Immediate Test',
+        body: 'If you see this, notification delivery is working.',
+        sound: 'default',
+        data: { id: 'immediate-test' },
+      },
+      trigger: null,
+    });
+
+    console.log('✅ IMMEDIATE NOTIFICATION SENT:', id);
+
+    return id;
+  } catch (error) {
+    console.error('❌ IMMEDIATE NOTIFICATION FAILED:', error);
+    return null;
+  }
+}
+export async function clearAllNotifications() {
+  await Notifications.cancelAllScheduledNotificationsAsync();
+  console.log('🗑️ ALL NOTIFICATIONS CLEARED');
+}
+export async function debugNotifications() {
+  try {
+    const permission = await Notifications.getPermissionsAsync();
+
+    console.log(
+      '🔔 PERMISSION:',
+      JSON.stringify(permission, null, 2)
+    );
+
+    if (Platform.OS === 'android') {
+      const channel =
+        await Notifications.getNotificationChannelAsync('safevault');
+
+      console.log(
+        '📢 SAFEVAULT CHANNEL:',
+        JSON.stringify(channel, null, 2)
+      );
+
+      const channels =
+        await Notifications.getNotificationChannelsAsync();
+
+      console.log(
+        '📢 ALL CHANNELS:',
+        JSON.stringify(channels, null, 2)
+      );
+    }
+
+    const scheduled =
+      await Notifications.getAllScheduledNotificationsAsync();
+
+    console.log(
+      '📅 SCHEDULED:',
+      JSON.stringify(scheduled, null, 2)
+    );
+  } catch (error) {
+    console.error(
+      '❌ NOTIFICATION DEBUG ERROR:',
+      error
+    );
   }
 }
 
