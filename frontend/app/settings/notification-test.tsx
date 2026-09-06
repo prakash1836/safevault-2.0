@@ -22,7 +22,7 @@ export default function NotificationTestScreen() {
       </Text>
 
       <Button
-        title="TEST NOTIFICATION testing"
+        title="TEST NOTIFICATION testing 90 seconds"
         onPress={handleTest}
       />
       {/* <Button
