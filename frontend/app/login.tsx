@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Cloud, Lock, Sparkles } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useAuth } from '../src/contexts/AuthContext';
+import { usePermissions } from '../src/contexts/PermissionsContext';
 import { useTheme } from '../src/contexts/ThemeContext';
 import { PrimaryButton } from '../src/components/UI';
 import { PressableScale } from '../src/components/PressableScale';
@@ -12,26 +13,46 @@ import { Logo } from '../src/components/Logo';
 import { colors, spacing, radius, typography } from '../src/constants/theme';
 
 export default function Login() {
-  const { loginGoogle, loginDemo, hasGoogleConfig } = useAuth();
+  const { user, loginGoogle, loginDemo, hasGoogleConfig } = useAuth();
+  const { onboarded } = usePermissions();
   const t = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState<'google' | 'demo' | null>(null);
 
-  const onGoogle = async () => {
-    setLoading('google');
-    const r = await loginGoogle();
-    setLoading(null);
-    if (!r.ok) {
-      if (r.reason === 'cancelled') return;
-      Alert.alert('Sign-in failed', 'We could not connect to Google. Try demo mode or check your network.');
-    }
-  };
-  const onDemo = async () => {
-    setLoading('demo');
-    await loginDemo();
-    router.replace('/onboarding');
-  };
+  useEffect(() => {
+    if (!user) return;
 
+    if (!onboarded) {
+      router.replace('/onboarding');
+    } else {
+      router.replace('/(tabs)/home');
+    }
+  }, [user, onboarded, router]);
+
+ const onGoogle = async () => {
+  setLoading('google');
+
+  const r = await loginGoogle();
+
+  setLoading(null);
+
+  if (!r.ok) {
+    if (r.reason === 'cancelled') return;
+
+    Alert.alert(
+      'Sign-in failed',
+      'We could not connect to Google. Try demo mode or check your network.'
+    );
+  }
+};
+
+  const onDemo = async () => {
+  setLoading('demo');
+
+  await loginDemo();
+
+  setLoading(null);
+};
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -71,19 +92,20 @@ export default function Login() {
 
         <Animated.View entering={FadeInDown.delay(300).duration(280)} style={styles.actions}>
           <PrimaryButton
-            title={hasGoogleConfig ? 'Continue with Google' : 'Connect Google Drive'}
+            title={hasGoogleConfig ? 'Login with Google' : 'Connect Google Drive'}
+            // title={hasGoogleConfig ? 'Continue with Google' : 'Connect Google Drive'}
             onPress={onGoogle}
             loading={loading === 'google'}
             variant="dark"
             testID="login-google-btn"
           />
-          <PressableScale onPress={onDemo} haptic="light" testID="login-demo-btn">
+          {/* <PressableScale onPress={onDemo} haptic="light" testID="login-demo-btn">
             <View style={styles.demoBtn}>
               <Text style={[styles.demoText, { color: t.accent }]}>
                 {loading === 'demo' ? 'Loading…' : 'Try Demo Mode'}
               </Text>
             </View>
-          </PressableScale>
+          </PressableScale> */}
           <PressableScale onPress={() => router.push('/recovery/restore')} haptic="light" testID="login-restore-btn">
             <View style={styles.demoBtn}>
               <Text style={[styles.demoText, { color: t.accent }]}>Restore from Google Drive →</Text>

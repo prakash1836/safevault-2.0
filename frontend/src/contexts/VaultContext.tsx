@@ -3,7 +3,7 @@ import type { VaultDocument, VaultEvent, FamilyMember, DriveUsage } from '../typ
 import { storage } from '../services/storage';
 import { useAuth } from './AuthContext';
 import { deleteFromDrive, fetchDriveQuota } from '../services/drive';
-import { scheduleReminders, cancelAllForId, initNotifications } from '../services/notifications';
+import { scheduleReminders,scheduleGroupedDocumentReminders, cancelAllForId, initNotifications } from '../services/notifications';
 import { Migration } from '../services/migration';
 import { UploadCoordinator, type CoordinatorEvent } from '../services/uploadCoordinator';
 import { getDocStatus } from '../utils/date';
@@ -67,6 +67,48 @@ async function clearRemindersFor(id: string) {
   if (existing && existing.length) await cancelAllForId(existing);
   reminderIdsStore.delete(id);
   await persistReminderStore();
+}
+
+async function rebuildDocumentReminders(
+  documents: VaultDocument[]
+) {
+  /*
+   * Cancel existing document reminder notifications.
+   *
+   * We rebuild the complete document schedule so that documents
+   * can be regrouped whenever one is added, edited, or deleted.
+   */
+  const existingIds = new Set<string>();
+
+  for (const ids of reminderIdsStore.values()) {
+    for (const id of ids) {
+      existingIds.add(id);
+    }
+  }
+
+  for (const notificationId of existingIds) {
+    try {
+      await cancelAllForId([notificationId]);
+    } catch {}
+  }
+
+  reminderIdsStore.clear();
+
+  const reminderMap =
+    await scheduleGroupedDocumentReminders(documents);
+
+  for (const [docId, ids] of Object.entries(reminderMap)) {
+    if (ids.length > 0) {
+      reminderIdsStore.set(docId, ids);
+    }
+  }
+
+  await persistReminderStore();
+
+  console.log('🔄 DOCUMENT REMINDERS REBUILT:', {
+    documents: documents.length,
+    reminderMap,
+  });
 }
 
 const VaultContext = createContext<VaultCtx | null>(null);
@@ -189,6 +231,13 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const now = new Date().toISOString();
+
+        console.log('🕐 UPLOAD INPUT REMINDER TIME:', {
+          reminderTime: input.reminderTime,
+          hour: input.reminderTime?.hour,
+          minute: input.reminderTime?.minute,
+        });
+
         const id = 'doc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
         // Delegate encrypt + local save + SQLite + queue enqueue + best-effort
@@ -208,6 +257,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
             expiryDate: input.expiryDate,
             notes: input.notes,
             reminder: input.reminder,
+            reminderTime: input.reminderTime,
             createdAt: now,
             updatedAt: now,
             fileBase64: input.fileBase64,
@@ -219,28 +269,60 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         // Compose the VaultDocument that reflects the immediate attempt outcome.
         const doc: VaultDocument = {
           ...submit.doc,
-          fileId: submit.attempt.status === 'synced' ? submit.attempt.fileId : null,
+
+          // Preserve the user's selected notification time.
+          reminderTime: input.reminderTime,
+
+          fileId:
+            submit.attempt.status === 'synced'
+              ? submit.attempt.fileId
+              : null,
+
           syncState:
             submit.attempt.status === 'synced'
               ? 'synced'
               : submit.attempt.status === 'local-only'
                 ? 'local-only'
                 : 'pending-upload',
-          syncError: submit.attempt.status === 'pending' ? submit.attempt.error : null,
-        };
 
+          syncError:
+            submit.attempt.status === 'pending'
+              ? submit.attempt.error
+              : null,
+        };
         const next = [doc, ...docs];
         setDocs(next);
         await storage.setDocs(next);
+        try {
+          await rebuildDocumentReminders(next);
+        } catch (e) {
+          console.warn(
+            'Failed to rebuild grouped reminders after delete:',
+            e
+          );
+        }
 
         // Schedule reminders (unchanged from Phase 1).
-        if (doc.expiryDate) {
-          try {
-            const ids = await scheduleReminders(doc.id, doc.name, doc.expiryDate, doc.reminder);
-            await setRemindersFor(doc.id, ids);
-          } catch (e) {
-            console.warn('Failed to schedule reminders:', e);
-          }
+        // if (doc.expiryDate) {
+        //   try {
+        //     const ids = await scheduleReminders(
+        //     doc.id,
+        //     doc.name,
+        //     doc.expiryDate,
+        //     doc.reminder,
+        //     doc.reminderTime?.hour ?? 21,
+        //     doc.reminderTime?.minute ?? 40
+        //   );
+        //     await setRemindersFor(doc.id, ids);
+        //   } catch (e) {
+        //     console.warn('Failed to schedule reminders:', e);
+        //   }
+        // }
+
+        try {
+          await rebuildDocumentReminders(next);
+        } catch (e) {
+          console.warn('Failed to rebuild grouped reminders:', e);
         }
 
         if (submit.attempt.status === 'pending') {
@@ -268,28 +350,43 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const next = docs.map((d) => (d.id === id ? (nextDoc as VaultDocument) : d));
       setDocs(next);
       await storage.setDocs(next);
-
+      
       // Re-schedule reminders when anything reminder-relevant changed on a doc that still has an expiry.
       if (prev && nextDoc) {
-        const expiryChanged  = (prev.expiryDate || null) !== (nextDoc.expiryDate || null);
-        const flagsChanged   =
-          prev.reminder.days30 !== nextDoc.reminder.days30 ||
-          prev.reminder.days7  !== nextDoc.reminder.days7  ||
-          prev.reminder.days1  !== nextDoc.reminder.days1;
-        const nameChanged    = prev.name !== nextDoc.name;
+      const expiryChanged =
+        (prev.expiryDate || null) !==
+        (nextDoc.expiryDate || null);
 
-        if (expiryChanged || flagsChanged || nameChanged) {
-          await clearRemindersFor(nextDoc.id);
-          if (nextDoc.expiryDate) {
-            try {
-              const ids = await scheduleReminders(nextDoc.id, nextDoc.name, nextDoc.expiryDate, nextDoc.reminder);
-              await setRemindersFor(nextDoc.id, ids);
-            } catch (err) {
-              console.warn('Failed to re-schedule reminders on update:', err);
-            }
-          }
+      const flagsChanged =
+        prev.reminder.days30 !== nextDoc.reminder.days30 ||
+        prev.reminder.days7 !== nextDoc.reminder.days7 ||
+        prev.reminder.days1 !== nextDoc.reminder.days1;
+
+      const nameChanged =
+        prev.name !== nextDoc.name;
+
+      const reminderTimeChanged =
+        (prev.reminderTime?.hour ?? 16) !==
+          (nextDoc.reminderTime?.hour ?? 16) ||
+        (prev.reminderTime?.minute ?? 30) !==
+          (nextDoc.reminderTime?.minute ?? 30);
+
+      if (
+        expiryChanged ||
+        flagsChanged ||
+        nameChanged ||
+        reminderTimeChanged
+      ) {
+        try {
+          await rebuildDocumentReminders(next);
+        } catch (err) {
+          console.warn(
+            'Failed to rebuild grouped reminders on update:',
+            err
+          );
         }
       }
+    }
     },
     [docs]
   );
@@ -309,7 +406,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           await deleteFromDrive(user, doc.fileId, doc.localUri);
         } catch {}
       }
-      await clearRemindersFor(id);
+      // await clearRemindersFor(id);
     },
     [user, docs]
   );

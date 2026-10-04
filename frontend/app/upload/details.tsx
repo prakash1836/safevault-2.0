@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Calendar, Check } from 'lucide-react-native';
+import { Calendar, Check,Clock } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Stepper } from '../../src/components/Stepper';
@@ -22,6 +22,7 @@ export default function DetailsStep() {
   const t = useTheme();
   const router = useRouter();
   const [pickWhich, setPickWhich] = useState<null | 'issue' | 'expiry'>(null);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   const setDate = (_: any, d?: Date) => {
     if (d && pickWhich) {
@@ -33,12 +34,48 @@ export default function DetailsStep() {
     if (Platform.OS !== 'ios') setPickWhich(null);
   };
 
+  const setReminderTime = (_event: any, d?: Date) => {
+  if (d) {
+    hapt.light();
+
+    const reminderTime = {
+      hour: d.getHours(),
+      minute: d.getMinutes(),
+    };
+
+    console.log('🕐 TIME SELECTED IN DETAILS:', reminderTime);
+
+    setDraft({
+      reminderTime,
+    });
+  }
+
+  if (Platform.OS !== 'ios') {
+    setShowTimePicker(false);
+  }
+};
+
+  
   const canContinue = draft.name.trim().length > 0;
 
   const toggleReminder = (k: 'days30' | 'days7' | 'days1') => {
     hapt.selection();
     setDraft({ reminder: { ...draft.reminder, [k]: !draft.reminder[k] } });
   };
+
+  const reminderTimeDate = new Date();
+
+reminderTimeDate.setHours(
+  draft.reminderTime?.hour ?? 16,
+  draft.reminderTime?.minute ?? 30,
+  0,
+  0
+);
+
+const reminderTimeText = reminderTimeDate.toLocaleTimeString([], {
+  hour: 'numeric',
+  minute: '2-digit',
+});
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -133,6 +170,49 @@ export default function DetailsStep() {
             ))}
           </View>
         </Animated.View>
+        <View style={{ marginTop: spacing.md }}>
+  <Label text="Notification time" />
+
+  <PressableScale
+    onPress={() => {
+      hapt.selection();
+      setShowTimePicker(true);
+    }}
+    haptic="light"
+  >
+    <View
+  style={[
+    styles.dateBtn,
+    {
+      borderColor: t.accent + '30',
+    },
+  ]}
+>
+  <Clock color={t.accent} size={16} />
+  <Text style={styles.dateText}>
+    {reminderTimeText}
+  </Text>
+</View>
+  </PressableScale>
+
+  <Text style={styles.remDesc}>
+    Reminders will be sent at this time.
+  </Text>
+</View>
+        {showTimePicker && (
+            <DateTimePicker
+              value={new Date(
+                2000,
+                0,
+                1,
+                draft.reminderTime?.hour ?? 16,
+                draft.reminderTime?.minute ?? 30
+              )}
+              mode="time"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={setReminderTime}
+            />
+          )}
       </ScrollView>
       {pickWhich && (
         <DateTimePicker

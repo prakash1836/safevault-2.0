@@ -16,6 +16,10 @@ export interface UploadDraft {
   expiryDate: string | null;
   notes: string;
   reminder: DocReminder;
+  reminderTime: {
+  hour: number;
+  minute: number;
+};
   /** Per-document storage choice. Defaults from `StoragePreference.getMode()` on mount. */
   storageMode: StorageMode;
 }
@@ -33,6 +37,10 @@ const EMPTY: UploadDraft = {
   expiryDate: null,
   notes: '',
   reminder: { days30: true, days7: true, days1: true },
+  reminderTime: {
+  hour: 16,
+  minute: 30,
+  },
   storageMode: 'both',
 };
 

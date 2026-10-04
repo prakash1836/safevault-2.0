@@ -63,6 +63,7 @@ export default function ReviewStep() {
         expiryDate: draft.expiryDate || undefined,
         notes: draft.notes,
         reminder: draft.reminder,
+        reminderTime: draft.reminderTime,
         fileBase64: draft.fileBase64,
         storageMode: draft.storageMode,
       } as any);
