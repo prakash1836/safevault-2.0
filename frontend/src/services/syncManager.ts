@@ -9,6 +9,7 @@
  * - Deletion is represented by a manifest tombstone; physical cleanup is a separate task.
  */
 import type { AuthUser, VaultDocument } from '../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { storage } from './storage';
 import { FolderManager } from './folderManager';
 import {
@@ -48,10 +49,10 @@ function publish(patch: Partial<SyncSnapshot>): void {
 }
 
 async function getDeviceId(): Promise<string> {
-  const current = await storage.getString?.(DEVICE_ID_KEY);
+  const current = await AsyncStorage.getItem(DEVICE_ID_KEY);
   if (current) return current;
   const generated = 'device_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
-  if (storage.setString) await storage.setString(DEVICE_ID_KEY, generated);
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
   return generated;
 }
 
@@ -154,6 +155,8 @@ export const SyncManager = {
             continue;
           }
           const existing = localById.get(entry.id);
+          // Never replace interrupted local edits/uploads with potentially stale remote metadata.
+          if (existing && ['pending-upload', 'uploading', 'failed', 'local-only'].includes(existing.syncState ?? '')) continue;
           mergedById.set(entry.id, manifestEntryToDocument(entry, existing));
         }
 
