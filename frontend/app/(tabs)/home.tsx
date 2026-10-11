@@ -199,7 +199,7 @@ export default function Home() {
         </Animated.View>
 
         {/* Priority Reminder Card — surfaces the most urgent item (elevates reminders per brand focus) */}
-        {upcoming.length > 0 && (
+        {/* {upcoming.length > 0 && (
           <Animated.View entering={FadeInDown.delay(60).duration(320)} style={{ marginBottom: spacing.md }}>
             <PriorityReminderCard
               doc={upcoming[0]}
@@ -208,7 +208,7 @@ export default function Home() {
               onPress={() => router.push(`/document/${upcoming[0].id}`)}
             />
           </Animated.View>
-        )}
+        )} */}
 
         {/* Premium Vault Health Card with Ring */}
         <Animated.View entering={FadeInDown.delay(100).duration(350)} style={[styles.healthCard, { backgroundColor: t.accentDark }]} testID="vault-health-card">
@@ -319,7 +319,7 @@ export default function Home() {
         </View>
 
         {/* Suggestions Section */}
-        {suggestions.length > 0 && (
+        {/* {suggestions.length > 0 && (
           <View style={{ marginTop: spacing.xxl }}>
             <SectionHeader title="Missing in your vault" subtitle="Recommended documents" />
             <View style={{ gap: spacing.sm }}>
@@ -338,7 +338,7 @@ export default function Home() {
               ))}
             </View>
           </View>
-        )}
+        )} */}
 
         {/* Family Section */}
         <View style={{ marginTop: spacing.xxl, marginBottom: 40 }}>

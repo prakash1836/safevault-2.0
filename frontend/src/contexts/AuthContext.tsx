@@ -3,6 +3,7 @@ import type { AuthUser } from '../types';
 import { storage } from '../services/storage';
 import { fetchUserInfo, buildDemoUser, GOOGLE_SCOPES } from '../services/auth';
 import { deriveAndStoreKey, clearKey, secureStore } from '../services/encryption';
+import * as Notifications from 'expo-notifications';
 import {
   GoogleSignin,
   statusCodes,
@@ -52,7 +53,7 @@ useEffect(() => {
   useEffect(() => {
     (async () => {
       try {
-          
+         
         const saved = await storage.getUser();
         if (saved) {
           // Verify encryption key exists

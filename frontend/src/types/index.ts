@@ -57,6 +57,10 @@ export interface VaultDocument {
   expiryDate?: string;
   notes?: string;
   reminder: DocReminder;
+  reminderTime?: {
+  hour: number;
+  minute: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
