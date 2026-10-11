@@ -332,15 +332,6 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
             console.warn('[sync] manifest update after upload failed:', syncErr);
           }
         }
-        try {
-          await rebuildDocumentReminders(next);
-        } catch (e) {
-          console.warn(
-            'Failed to rebuild grouped reminders after delete:',
-            e
-          );
-        }
-
         // Schedule reminders (unchanged from Phase 1).
         // if (doc.expiryDate) {
         //   try {
@@ -389,7 +380,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const next = docs.map((d) => (d.id === id ? (nextDoc as VaultDocument) : d));
       setDocs(next);
       await storage.setDocs(next);
-      if (user && nextDoc && !user.demo && user.accessToken) {
+      if (user && nextDoc?.fileId && !user.demo && user.accessToken) {
         try {
           await SyncManager.upsertDocument(user, nextDoc);
         } catch (syncErr) {
@@ -443,7 +434,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const doc = docs.find((d) => d.id === id);
       // Write the tombstone before hiding the item locally. If Drive is unavailable,
       // fail closed and leave the document visible rather than risk an untracked delete.
-      if (doc && !user.demo && user.accessToken) {
+      if (doc?.fileId && !user.demo && user.accessToken) {
         await SyncManager.softDeleteDocument(user, id);
       }
       const next = docs.filter((d) => d.id !== id);
