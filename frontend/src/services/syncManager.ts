@@ -150,11 +150,14 @@ export const SyncManager = {
 
         // Remote tombstones remove the item from the active list but do not delete its bytes.
         for (const entry of manifest.documents) {
+          const existing = localById.get(entry.id);
           if (entry.deleted) {
+            // Preserve pending local edits/uploads; an older remote tombstone must not
+            // erase a document that this device has not successfully synced yet.
+            if (existing && ['pending-upload', 'uploading', 'failed', 'local-only'].includes(existing.syncState ?? '')) continue;
             mergedById.delete(entry.id);
             continue;
           }
-          const existing = localById.get(entry.id);
           // Never replace interrupted local edits/uploads with potentially stale remote metadata.
           if (existing && ['pending-upload', 'uploading', 'failed', 'local-only'].includes(existing.syncState ?? '')) continue;
           mergedById.set(entry.id, manifestEntryToDocument(entry, existing));
