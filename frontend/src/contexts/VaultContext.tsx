@@ -2,7 +2,8 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import type { VaultDocument, VaultEvent, FamilyMember, DriveUsage } from '../types';
 import { storage } from '../services/storage';
 import { useAuth } from './AuthContext';
-import { deleteFromDrive, fetchDriveQuota } from '../services/drive';
+import { fetchDriveQuota } from '../services/drive';
+import { SyncManager } from '../services/syncManager';
 import { scheduleReminders,scheduleGroupedDocumentReminders, cancelAllForId, initNotifications } from '../services/notifications';
 import { Migration } from '../services/migration';
 import { UploadCoordinator, type CoordinatorEvent } from '../services/uploadCoordinator';
@@ -172,6 +173,18 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
           setFamily(f);
         }
         setDrive(dr);
+
+        // Reconcile the signed-in user's encrypted Drive manifest with local metadata.
+        // A sync failure is non-destructive: the local vault remains usable offline.
+        if (!user.demo && user.accessToken) {
+          try {
+            const syncedDocs = await SyncManager.sync(user);
+            setDocs(syncedDocs);
+            await rebuildDocumentReminders(syncedDocs);
+          } catch (syncErr) {
+            console.warn('[sync] initial reconciliation failed; keeping local vault:', syncErr);
+          }
+        }
       } catch (e) {
         console.warn('Failed to load vault data:', e);
       } finally {
@@ -192,6 +205,23 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     UploadCoordinator.setUser(user || null);
     const unsub = UploadCoordinator.subscribe((ev: CoordinatorEvent) => {
+      if (ev.state === 'synced' && user && !user.demo && user.accessToken) {
+        // Retry-driven uploads complete after addDoc has persisted its local record.
+        // Read the durable record rather than depending on React state timing.
+        void storage.getDocs().then((stored) => {
+          const doc = stored.find((item) => item.id === ev.docId);
+          if (doc) {
+            const synced = {
+              ...doc,
+              fileId: ev.fileId !== undefined ? ev.fileId : doc.fileId,
+              localUri: ev.localUri !== undefined ? ev.localUri : doc.localUri,
+              syncState: 'synced' as const,
+              syncError: null,
+            };
+            return SyncManager.upsertDocument(user, synced);
+          }
+        }).catch((err) => console.warn('[sync] manifest update after upload failed:', err));
+      }
       // Skip progress-only frames during an active upload — they update state
       // in-memory only. Terminal transitions (synced/failed/pending/deleted)
       // and the first 'uploading' notice do get persisted. This keeps
@@ -293,15 +323,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         const next = [doc, ...docs];
         setDocs(next);
         await storage.setDocs(next);
-        try {
-          await rebuildDocumentReminders(next);
-        } catch (e) {
-          console.warn(
-            'Failed to rebuild grouped reminders after delete:',
-            e
-          );
+        if (submit.attempt.status === 'synced') {
+          try {
+            await SyncManager.upsertDocument(user, doc);
+          } catch (syncErr) {
+            // The encrypted file is already uploaded; a manifest retry must not make
+            // the user think the document upload itself failed.
+            console.warn('[sync] manifest update after upload failed:', syncErr);
+          }
         }
-
         // Schedule reminders (unchanged from Phase 1).
         // if (doc.expiryDate) {
         //   try {
@@ -350,7 +380,14 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const next = docs.map((d) => (d.id === id ? (nextDoc as VaultDocument) : d));
       setDocs(next);
       await storage.setDocs(next);
-      
+      if (user && nextDoc?.fileId && !user.demo && user.accessToken) {
+        try {
+          await SyncManager.upsertDocument(user, nextDoc);
+        } catch (syncErr) {
+          console.warn('[sync] manifest update after document edit failed:', syncErr);
+        }
+      }
+
       // Re-schedule reminders when anything reminder-relevant changed on a doc that still has an expiry.
       if (prev && nextDoc) {
       const expiryChanged =
@@ -388,25 +425,28 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       }
     }
     },
-    [docs]
+    [docs, user]
   );
 
   const deleteDoc: VaultCtx['deleteDoc'] = useCallback(
     async (id) => {
       if (!user) return;
       const doc = docs.find((d) => d.id === id);
+      // Write the tombstone before hiding the item locally. If Drive is unavailable,
+      // fail closed and leave the document visible rather than risk an untracked delete.
+      if (doc?.fileId && !user.demo && user.accessToken) {
+        await SyncManager.softDeleteDocument(user, id);
+      }
       const next = docs.filter((d) => d.id !== id);
       setDocs(next);
       await storage.setDocs(next);
-      // Cancel any pending queued uploads for this doc first — otherwise the
-      // coordinator could resurrect it seconds later on the retry loop.
+      // Cancel queued uploads. Remote bytes are intentionally retained for the
+      // recovery window; physical deletion belongs to a later garbage-collection pass.
       try { await UploadCoordinator.cancelForDoc(id); } catch {}
-      if (doc?.fileId) {
-        try {
-          await deleteFromDrive(user, doc.fileId, doc.localUri);
-        } catch {}
+      try { await rebuildDocumentReminders(next); } catch (err) {
+        console.warn('[reminders] failed to rebuild after delete:', err);
       }
-      // await clearRemindersFor(id);
+      await clearRemindersFor(id);
     },
     [user, docs]
   );
