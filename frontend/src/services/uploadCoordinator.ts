@@ -34,7 +34,7 @@
 
 import type { AuthUser, VaultDocument, SyncState, StorageMode } from '../types';
 import { encryptBase64, getKey } from './encryption';
-import { saveEncryptedLocal, uploadToDrive, deleteEncryptedLocal } from './drive';
+import { saveEncryptedLocal, uploadToDrive, deleteEncryptedLocal, findFileOnDrive } from './drive';
 import { FolderManager } from './folderManager';
 import { UploadQueue, type UploadQueueItem } from './uploadQueue';
 import { sqlite } from './sqlite';
@@ -53,6 +53,9 @@ export interface CoordinatorEvent {
 type Listener = (ev: CoordinatorEvent) => void;
 
 const RETRY_INTERVAL_MS = 30_000;
+// Recover only after a generous lease so an interrupted process can be retried
+// without treating ordinary long uploads as abandoned.
+const STALE_UPLOAD_AFTER_MS = 15 * 60_000;
 const BACKOFF_STEPS_MS = [2_000, 5_000, 15_000, 60_000];
 
 function backoffFor(attempts: number): number {
@@ -239,6 +242,10 @@ class Coordinator {
 
     this.processing = true;
     try {
+      // A process may have terminated after persisting "in-progress".
+      // Requeue only attempts whose lease has expired (or legacy items without
+      // a timestamp), then process the recovered snapshot normally.
+      await UploadQueue.recoverStaleInProgress(STALE_UPLOAD_AFTER_MS);
       const items = await UploadQueue.list();
       const now = Date.now();
       for (const item of items) {
@@ -262,6 +269,7 @@ class Coordinator {
   async retryAll(): Promise<void> {
     if (!this.user) return;
     const user = this.user;
+    await UploadQueue.recoverStaleInProgress(STALE_UPLOAD_AFTER_MS);
     const items = await UploadQueue.list();
     for (const item of items) {
       if (item.status === 'in-progress') continue;
@@ -275,8 +283,12 @@ class Coordinator {
     cipherOverride?: string,
     onProgress?: (p: number) => void
   ): Promise<AttemptResult> {
-    // Mark in-progress
-    await UploadQueue.update(item.id, { status: 'in-progress' });
+    // Persist an attempt timestamp with the state so a restart can distinguish
+    // an abandoned upload from an active/recent one.
+    await UploadQueue.update(item.id, {
+      status: 'in-progress',
+      lastAttemptAt: new Date().toISOString(),
+    });
     this.emit({ docId: item.docId, state: 'uploading', progress: 0 });
 
     try {
@@ -288,21 +300,44 @@ class Coordinator {
         throw new Error('Encrypted local cache is missing — cannot re-upload');
       }
 
-      const fileId = await uploadToDrive(user, item.fileName, cipher, item.mimeType, {
-        parentId: folderId,
-        appProperties: {
-          'safevault': '1',
-          'safevault.role': 'doc',
-          'safevault.docId': item.docId,
-          'safevault.category': item.category,
-          'safevault.version': String(item.version || 1),
-          'safevault.hash': item.fileHash || '',
-        },
-        onProgress: (p) => {
-          onProgress?.(p);
-          this.emit({ docId: item.docId, state: 'uploading', progress: p });
-        },
-      });
+      const appProperties = {
+        'safevault': '1',
+        'safevault.role': 'doc',
+        'safevault.docId': item.docId,
+        'safevault.category': item.category,
+        'safevault.version': String(item.version || 1),
+        'safevault.hash': item.fileHash || '',
+      };
+
+      // If Drive accepted the previous attempt but the app died before queue
+      // cleanup, reuse that remote file rather than uploading a duplicate.
+      // Demo/local sessions have no searchable Drive account.
+      const existingRemote = user.demo || !user.accessToken
+        ? null
+        : await findFileOnDrive(user, {
+            onlyFolders: false,
+            appProperties: {
+              'safevault': '1',
+              'safevault.role': 'doc',
+              'safevault.docId': item.docId,
+              'safevault.version': String(item.version || 1),
+            },
+          });
+
+      const fileId = existingRemote?.id ?? await uploadToDrive(
+        user,
+        item.fileName,
+        cipher,
+        item.mimeType,
+        {
+          parentId: folderId,
+          appProperties,
+          onProgress: (p) => {
+            onProgress?.(p);
+            this.emit({ docId: item.docId, state: 'uploading', progress: p });
+          },
+        }
+      );
 
       // SQLite: update fileId + driveFolderId
       try {
