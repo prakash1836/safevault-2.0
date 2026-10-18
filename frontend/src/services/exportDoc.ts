@@ -27,8 +27,45 @@ function extFor(mime?: string | null): string {
   return 'bin';
 }
 
+function fileTypeFor(base64: string, mime?: string | null): { ext: string; mimeType: string } {
+  // Prefer the actual file signature over potentially unreliable picker metadata.
+  if (base64.startsWith('JVBERi0')) return { ext: 'pdf', mimeType: 'application/pdf' };
+  if (base64.startsWith('iVBORw0KGgo')) return { ext: 'png', mimeType: 'image/png' };
+  if (base64.startsWith('/9j/')) return { ext: 'jpg', mimeType: 'image/jpeg' };
+  if (base64.startsWith('R0lGOD')) return { ext: 'gif', mimeType: 'image/gif' };
+  return { ext: extFor(mime), mimeType: mime || 'application/octet-stream' };
+}
+
 function safeStem(name: string): string {
   return (name || 'document').replace(/[^a-z0-9._-]/gi, '_').slice(0, 80);
+}
+
+/**
+ * Android's React Native Share.share({ url }) does not attach the local file.
+ * Use Android's Storage Access Framework so the user saves the actual bytes
+ * with the correct filename/MIME type. iOS continues to use the share sheet.
+ */
+async function saveExportFile(
+  fileName: string,
+  content: string,
+  mimeType: string,
+  encoding: FileSystem.EncodingType
+): Promise<{ path: string; share: boolean }> {
+  if (Platform.OS === 'android') {
+    const permission = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+    if (!permission.granted) throw new Error('Save cancelled. Choose a folder to save your file.');
+    const uri = await FileSystem.StorageAccessFramework.createFileAsync(
+      permission.directoryUri,
+      fileName,
+      mimeType
+    );
+    await FileSystem.StorageAccessFramework.writeAsStringAsync(uri, content, { encoding });
+    return { path: uri, share: false };
+  }
+
+  const path = (FileSystem.documentDirectory || '') + fileName;
+  await FileSystem.writeAsStringAsync(path, content, { encoding });
+  return { path, share: true };
 }
 
 export interface ExportOptions {
@@ -79,20 +116,25 @@ export async function exportOriginal(
   const content = await getDocumentContent(user, doc, { onProgress });
 
   onStage?.('writing');
-  const ext = extFor(doc.mimeType);
-  const outPath = (FileSystem.documentDirectory || '') + `${safeStem(doc.name)}.${ext}`;
-  await FileSystem.writeAsStringAsync(outPath, content.base64, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const type = fileTypeFor(content.base64, doc.mimeType);
+  const fileName = `${safeStem(doc.name)}.${type.ext}`;
+  const saved = await saveExportFile(
+    fileName,
+    content.base64,
+    type.mimeType,
+    FileSystem.EncodingType.Base64
+  );
 
-  onStage?.('sharing');
-  try {
-    await Share.share({ url: outPath, message: doc.name });
-  } catch {
-    /* user cancelled share sheet — not an error */
+  if (saved.share) {
+    onStage?.('sharing');
+    try {
+      await Share.share({ url: saved.path, message: doc.name });
+    } catch {
+      /* user cancelled share sheet — not an error */
+    }
   }
   onStage?.('done');
-  return { path: outPath, kind: 'original', integrityWarning: content.integrityWarning };
+  return { path: saved.path, kind: 'original', integrityWarning: content.integrityWarning };
 }
 
 /**
@@ -126,20 +168,27 @@ export async function exportEncrypted(
   }
 
   onStage?.('writing');
-  const outPath = (FileSystem.documentDirectory || '') + `${safeStem(doc.name)}.safevault.enc`;
-  await FileSystem.writeAsStringAsync(outPath, cipher);
+  const fileName = `${safeStem(doc.name)}.safevault.enc`;
+  const saved = await saveExportFile(
+    fileName,
+    cipher,
+    'application/octet-stream',
+    FileSystem.EncodingType.UTF8
+  );
 
-  onStage?.('sharing');
-  try {
-    await Share.share({
-      url: outPath,
-      message: `${doc.name} — encrypted SafeVault backup (can only be opened in SafeVault)`,
-    });
-  } catch {
-    /* cancelled */
+  if (saved.share) {
+    onStage?.('sharing');
+    try {
+      await Share.share({
+        url: saved.path,
+        message: `${doc.name} — encrypted SafeVault backup (can only be opened in SafeVault)`,
+      });
+    } catch {
+      /* cancelled */
+    }
   }
   onStage?.('done');
-  return { path: outPath, kind: 'encrypted' };
+  return { path: saved.path, kind: 'encrypted' };
 }
 
 export const ExportDoc = { exportOriginal, exportEncrypted };
