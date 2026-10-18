@@ -65,7 +65,7 @@ export async function getDocumentContent(
   if (doc.localUri) {
     const cipher = await readEncryptedLocal(doc.localUri);
     if (cipher) {
-      const base64 = decryptToBase64(cipher, key);
+      const base64 = await decryptToBase64(cipher, key);
       const check = verifyIntegrity(base64, doc.fileHash);
       return {
         base64,
@@ -81,7 +81,7 @@ export async function getDocumentContent(
   // 2. Drive fetch
   if (!doc.fileId) throw new Error('No file on Drive for this document');
   const cipher = await downloadFromDrive(user, doc.fileId, { onProgress: opts.onProgress });
-  const base64 = decryptToBase64(cipher, key);
+  const base64 = await decryptToBase64(cipher, key);
   const check = verifyIntegrity(base64, doc.fileHash);
 
   // 3. Cache locally for next time (native only — no-op returns null on web)

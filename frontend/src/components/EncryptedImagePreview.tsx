@@ -41,7 +41,7 @@ export function EncryptedImagePreview({ doc }: Props) {
       if (!doc.localUri) throw new Error('No file attached');
       const cipher = await readEncryptedLocal(doc.localUri);
       if (!cipher) throw new Error('Local cache unavailable on this platform');
-      const b64 = decryptToBase64(cipher, key);
+      const b64 = await decryptToBase64(cipher, key);
       const mime = doc.mimeType || 'image/jpeg';
       setDataUri(`data:${mime};base64,${b64}`);
       setReveal(true);
