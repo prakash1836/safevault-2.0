@@ -431,11 +431,11 @@ export default function RecoveryRestore() {
         </SheetParagraph>
         <SheetHeading>Wrong password</SheetHeading>
         <SheetParagraph>
-          A wrong password produces a different verifier tag. We compare the tag to the one in your envelope BEFORE any AES call. If they don't match, we tell you "Incorrect Recovery Password" — the encrypted key on Drive is not modified in any way.
+          A wrong password produces a different verifier tag. We compare the tag to the one in your envelope BEFORE any AES call. If they don&apos;t match, we tell you &quot;Incorrect Recovery Password&quot; — the encrypted key on Drive is not modified in any way.
         </SheetParagraph>
         <SheetHeading>Right password</SheetHeading>
         <SheetParagraph>
-          The KEK unwraps the AES ciphertext into your original vault key. That key is written into your device's secure keystore. From that point on, opening documents works exactly as on your previous device.
+          The KEK unwraps the AES ciphertext into your original vault key. That key is written into your device&apos;s secure keystore. From that point on, opening documents works exactly as on your previous device.
         </SheetParagraph>
       </InfoSheet>
     </SafeAreaView>
