@@ -235,8 +235,8 @@ async function findManifestFile(user: AuthUser, name: string): Promise<DriveFile
  * Decrypt & verify a downloaded manifest payload.
  * Throws when either decryption or integrity verification fails.
  */
-function decryptAndVerifyManifest(cipherPayload: string, keyHex: string, expectedHash: string | null): VaultManifest {
-  const manifest = decryptJSON<VaultManifest>(cipherPayload, keyHex);
+async function decryptAndVerifyManifest(cipherPayload: string, keyHex: string, expectedHash: string | null): Promise<VaultManifest> {
+  const manifest = await decryptJSON<VaultManifest>(cipherPayload, keyHex);
   const errs = validateManifest(manifest);
   if (errs.length) {
     throw new Error('Manifest failed validation: ' + errs.join('; '));
@@ -304,7 +304,7 @@ export const MetadataManager = {
       try {
         const payload = await downloadFromDrive(user, primary.id);
         const expected = primary.appProperties?.['safevault.hash'] ?? null;
-        const manifest = decryptAndVerifyManifest(payload, key, expected);
+        const manifest = await decryptAndVerifyManifest(payload, key, expected);
         return { manifest, recovered: false, isEmpty: false, fileId: primary.id };
       } catch (primaryErr) {
         // Fall through to backup
@@ -318,7 +318,7 @@ export const MetadataManager = {
       try {
         const payload = await downloadFromDrive(user, backup.id);
         const expected = backup.appProperties?.['safevault.hash'] ?? null;
-        const manifest = decryptAndVerifyManifest(payload, key, expected);
+        const manifest = await decryptAndVerifyManifest(payload, key, expected);
         return { manifest, recovered: true, isEmpty: false, fileId: backup.id };
       } catch (backupErr) {
         const e = new Error('Manifest is corrupted and backup recovery failed');
@@ -361,7 +361,7 @@ export const MetadataManager = {
     const errs = validateManifest(next);
     if (errs.length) throw new Error('Refusing to save invalid manifest: ' + errs.join('; '));
 
-    const cipher = encryptJSON(next, key);
+    const cipher = await encryptJSON(next, key);
 
     // 2. Rotate: if primary exists, copy its ciphertext into .bak first.
     const existingPrimary = await findManifestFile(user, MANIFEST_NAME);
@@ -445,8 +445,8 @@ export const MetadataManager = {
  * Decrypt + verify a manifest payload without touching Drive. Handy for
  * corruption / recovery tests that fabricate ciphertext.
  */
-export function decryptAndVerifyForTest(payload: string, keyHex: string, expectedHash: string | null): VaultManifest {
-  return decryptAndVerifyManifest(payload, keyHex, expectedHash);
+export async function decryptAndVerifyForTest(payload: string, keyHex: string, expectedHash: string | null): Promise<VaultManifest> {
+  return await decryptAndVerifyManifest(payload, keyHex, expectedHash);
 }
 
 /**
@@ -454,13 +454,13 @@ export function decryptAndVerifyForTest(payload: string, keyHex: string, expecte
  * on hash mismatch (mismatch is reported by the caller). Used by recovery
  * flows and diagnostics.
  */
-export function decryptWithoutHashCheck(payload: string, keyHex: string): VaultManifest {
+export async function decryptWithoutHashCheck(payload: string, keyHex: string): Promise<VaultManifest> {
   try {
-    return decryptJSON<VaultManifest>(payload, keyHex);
+    return await decryptJSON<VaultManifest>(payload, keyHex);
   } catch (e) {
     // If it's actually a plaintext JSON (test fixture), tolerate it.
     try {
-      const asB64 = decryptToBase64(payload, keyHex);
+      const asB64 = await decryptToBase64(payload, keyHex);
       const raw = CryptoJS.enc.Base64.parse(asB64).toString(CryptoJS.enc.Utf8);
       return JSON.parse(raw) as VaultManifest;
     } catch {
