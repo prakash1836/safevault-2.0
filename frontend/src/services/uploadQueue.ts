@@ -121,6 +121,35 @@ export const UploadQueue = {
     });
   },
 
+  /**
+   * Requeue attempts left in-progress by an app/process interruption.
+   * Items with a recent attempt timestamp are left alone to avoid interrupting
+   * a legitimate long-running upload. Older queue entries without a timestamp
+   * are treated as stale because the previous coordinator did not persist one.
+   */
+  async recoverStaleInProgress(staleAfterMs: number): Promise<number> {
+    return withLock(async () => {
+      const items = await readRaw();
+      const now = Date.now();
+      let recovered = 0;
+      const next = items.map((item) => {
+        if (item.status !== 'in-progress') return item;
+        const startedAt = item.lastAttemptAt ? Date.parse(item.lastAttemptAt) : Number.NaN;
+        if (Number.isFinite(startedAt) && now - startedAt < staleAfterMs) return item;
+
+        recovered += 1;
+        return {
+          ...item,
+          status: 'pending' as const,
+          attempts: item.attempts + 1,
+          lastError: 'Recovered an interrupted upload attempt',
+        };
+      });
+      if (recovered > 0) await writeRaw(next);
+      return recovered;
+    });
+  },
+
   /** Patch a queue item by id. Returns the updated item or null. */
   async update(id: string, patch: Partial<UploadQueueItem>): Promise<UploadQueueItem | null> {
     return withLock(async () => {
