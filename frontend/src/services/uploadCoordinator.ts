@@ -321,6 +321,7 @@ class Coordinator {
               'safevault.role': 'doc',
               'safevault.docId': item.docId,
               'safevault.version': String(item.version || 1),
+              'safevault.hash': item.fileHash || '',
             },
           });
 
