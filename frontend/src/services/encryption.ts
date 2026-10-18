@@ -52,9 +52,14 @@ export async function encryptBase64(base64: string, keyHex: string): Promise<str
 
   const randomBytes = await Crypto.getRandomBytesAsync(16);
 
-  const iv = CryptoJS.lib.WordArray.create(
-    Array.from(randomBytes)
-  );
+  // CryptoJS WordArray.create() expects 32-bit words, not individual bytes.
+  // Parse the random bytes as hex so the IV is exactly 16 bytes (128 bits).
+  // decryptToBase64 remains compatible with existing ciphertexts whose IV was
+  // serialized using the previous byte-array-as-words implementation.
+  const ivHex = Array.from(randomBytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+  const iv = CryptoJS.enc.Hex.parse(ivHex);
 
   const wordArray = CryptoJS.enc.Base64.parse(base64);
 
@@ -64,7 +69,7 @@ export async function encryptBase64(base64: string, keyHex: string): Promise<str
     padding: CryptoJS.pad.Pkcs7,
   });
 
-  return iv.toString(CryptoJS.enc.Hex) + ":" + encrypted.toString();
+  return ivHex + ":" + encrypted.toString();
 }
 export async function decryptToBase64(payload: string, keyHex: string): Promise<string> {
   const [ivHex, ct] = payload.split(':');
