@@ -113,7 +113,7 @@ export function EncryptedImagePreview({ doc }: Props) {
       <View style={[styles.placeholder, { backgroundColor: colors.elevated }]} testID="preview-non-image">
         <FileText color={colors.textTertiary} size={28} />
         <Text style={styles.phTitle}>Preview not available</Text>
-        <Text style={styles.phSub}>This file type can&apos;t be previewed in‑app. Use Download to open it.</Text>
+        <Text style={styles.phSub}>This file type can&apos;t be previewed in-app. Use Download to open it.</Text>
       </View>
     );
   }
